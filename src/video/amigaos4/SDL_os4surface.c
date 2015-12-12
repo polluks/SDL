@@ -38,7 +38,7 @@
 #include <intuition/intuition.h>
 #include <libraries/Picasso96.h>
 
-//#define DEBUG
+#define DEBUG
 
 #include "../../main/amigaos4/SDL_os4debug.h"
 
@@ -80,6 +80,7 @@ int os4video_AllocHWSurface(_THIS, SDL_Surface *surface)
 
 		surface->hwdata->type = hwdata_bitmap;
 		surface->hwdata->lock = 0;
+		surface->hwdata->colorkey_bm = NULL;
 
 		/* Determine friend bitmap */
 		if (_this->hidden->scr == NULL)
@@ -93,8 +94,8 @@ int os4video_AllocHWSurface(_THIS, SDL_Surface *surface)
 			friend_bitmap = _this->hidden->win->RPort->BitMap;
 		}
 
-		dprintf("Trying to create %dx%dx%d bitmap\n",
-				surface->w, surface->h, surface->format->BitsPerPixel);
+		dprintf("Trying to create %dx%dx%d bitmap (friend %p)\n",
+				surface->w, surface->h, surface->format->BitsPerPixel, friend_bitmap);
 
 		surface->hwdata->bm = SDL_IP96->p96AllocBitMap (surface->w,
 													surface->h,
@@ -108,7 +109,14 @@ int os4video_AllocHWSurface(_THIS, SDL_Surface *surface)
 			/* Successfully created bitmap */
 			dprintf ("Created bitmap %p\n", surface->hwdata->bm);
 
-			surface->flags |= SDL_HWSURFACE | SDL_PREALLOC;
+			dprintf("BITMAP w %d, h %d, depth %d, bytes %d, bits %d\n", 
+				SDL_IP96->p96GetBitMapAttr(surface->hwdata->bm, P96BMA_WIDTH),
+				SDL_IP96->p96GetBitMapAttr(surface->hwdata->bm, P96BMA_HEIGHT),
+				SDL_IP96->p96GetBitMapAttr(surface->hwdata->bm, P96BMA_DEPTH),
+				SDL_IP96->p96GetBitMapAttr(surface->hwdata->bm, P96BMA_BYTESPERPIXEL),
+				SDL_IP96->p96GetBitMapAttr(surface->hwdata->bm, P96BMA_BITSPERPIXEL));
+
+			surface->flags |= SDL_HWSURFACE | SDL_PREALLOC | SDL_HWACCEL;
 			result = 0;
 		}
 		else
@@ -133,8 +141,14 @@ void os4video_FreeHWSurface(_THIS, SDL_Surface *surface)
 		{
 			/* Yes. Free BitMap */
 			dprintf("Freeing bitmap %p\n", surface->hwdata->bm);
+	
 			SDL_IP96->p96FreeBitMap (surface->hwdata->bm);
 
+			if (surface->hwdata->colorkey_bm)
+			{
+			    SDL_IGraphics->FreeBitMap(surface->hwdata->colorkey_bm);
+			}
+			
 			/*  Free surface hardware record */
 			SaveFreePooled(_this->hidden, surface->hwdata, sizeof(struct private_hwdata));
 			surface->hwdata = NULL;
@@ -261,43 +275,100 @@ int os4video_FillHWRect(_THIS, SDL_Surface *dst, SDL_Rect *rect, Uint32 color)
 		return -1;
 }
 
+static void os4video_composite(struct BitMap *src_bm, struct BitMap *dst_bm,
+	float surface_alpha, struct BitMap *colorkey_bm,
+	uint32 src_x, uint32 src_y,
+	uint32 width, uint32 height,
+	uint32 dst_x, uint32 dst_y,
+	uint32 flags)
+{
+	uint32 ret_code = SDL_IGraphics->CompositeTags(
+		COMPOSITE_Src_Over_Dest,
+		src_bm,
+		dst_bm,
+		COMPTAG_SrcAlpha, COMP_FLOAT_TO_FIX(surface_alpha),
+		COMPTAG_SrcAlphaMask, colorkey_bm,
+		COMPTAG_SrcX,		src_x,
+		COMPTAG_SrcY,		src_y,
+		COMPTAG_SrcWidth,   width,
+		COMPTAG_SrcHeight,  height,
+		COMPTAG_OffsetX,    dst_x,
+		COMPTAG_OffsetY,    dst_y,
+		//COMPTAG_DestX,      dstrect->x,
+		//COMPTAG_DestY,      dstrect->y,
+		//COMPTAG_DestWidth,  srcrect->w,
+		//COMPTAG_DestHeight, srcrect->h,
+		COMPTAG_Flags,      flags,
+		TAG_END);
+			
+		if (ret_code)
+		{
+			dprintf("CompositeTags: %d\n", ret_code);
+		}
+}
+
 static int os4video_HWAccelBlit(SDL_Surface *src, SDL_Rect *srcrect,
 			        SDL_Surface *dst, SDL_Rect *dstrect)
 {
-	dprintf("called\n");
+	//dprintf("called\n");
 
 	struct BitMap   *src_bm = src->hwdata->bm;
-	struct RenderInfo src_ri={ 0 };
 
-	static struct RastPort dst_rp;
-	static int dst_rp_initialized = 0;
-
-	if (!dst_rp_initialized) {
-		SDL_IGraphics->InitRastPort(&dst_rp);
-		dst_rp_initialized = 1;
-	}
-
-	dst_rp.BitMap = dst->hwdata->bm;
+	//dprintf("src_bm %p, dst->hwdata->bm %p\n", src_bm, dst->hwdata->bm);
 	
 	if (src_bm)
 	{
-		LONG src_lock = SDL_IP96->p96LockBitMap(src_bm, (uint8 *)&src_ri, sizeof(src_ri));
-
-		if (src_lock)
+		if (src->flags & SDL_SRCALPHA)
 		{
-			SDL_IP96->p96WritePixelArray(&src_ri,
-										 srcrect->x,
-										 srcrect->y,
-										 &dst_rp,
-										 dstrect->x,
-										 dstrect->y,
-										 srcrect->w,
-										 srcrect->h);
+			uint32 flags = COMPFLAG_IgnoreDestAlpha | COMPFLAG_HardwareOnly;
 	
-			SDL_IP96->p96UnlockBitMap(src_bm, src_lock);
+			float surface_alpha = 1.0f;
+	
+			// Per-surface alpha
+			surface_alpha = src->format->alpha / 255.0f;
+			
+//			dprintf("Per-surface alpha: %d\n", src->format->alpha);
+			
+			os4video_composite(src_bm, dst->hwdata->bm, surface_alpha,
+				src->hwdata->colorkey_bm,
+				srcrect->x, srcrect->y,
+				srcrect->w, srcrect->h,
+				dstrect->x, dstrect->y,
+				flags);
 		}
 		else
-			dprintf("Bitmap lock failed\n");
+		{
+			if (src->flags & SDL_SRCCOLORKEY)
+			{
+				uint32 flags = COMPFLAG_IgnoreDestAlpha | COMPFLAG_HardwareOnly;
+				float surface_alpha = 1.0f;
+
+				os4video_composite(src_bm, dst->hwdata->bm, surface_alpha,
+					src->hwdata->colorkey_bm,
+					srcrect->x, srcrect->y,
+					srcrect->w, srcrect->h,
+					dstrect->x, dstrect->y,
+					flags);
+			}
+			else
+			{
+				int32 error = SDL_IGraphics->BltBitMapTags(
+					BLITA_Source, src_bm,
+					BLITA_Dest, dst->hwdata->bm,
+					BLITA_SrcX, srcrect->x,
+					BLITA_SrcY, srcrect->y,
+					BLITA_DestX, dstrect->x,
+					BLITA_DestY, dstrect->y,
+					BLITA_Width, srcrect->w,
+					BLITA_Height, srcrect->h,
+					TAG_DONE);
+			
+				if (error != -1)
+				{
+				    dprintf("BltBitMapTags() returned %d", error);
+				}
+			}
+		}
 	}
 	return 0;
 }
@@ -306,23 +377,144 @@ int os4video_CheckHWBlit(_THIS, SDL_Surface *src, SDL_Surface *dst)
 {
 	dprintf("src flags:%s dst flags:%s\n", get_flags_str(src->flags), get_flags_str(dst->flags));
 
-	if (src->hwdata && dst->hwdata && !(src->flags & (SDL_SRCALPHA|SDL_SRCCOLORKEY)))
+	int accelerated = 0;
+
+	if (src->hwdata && dst->hwdata)
+	{
+		if (src->format->BitsPerPixel > 8)
+		{
+			/* With compositing feature we can accelerate alpha and color key too */
+			if ((_this->hidden->haveCompositing == TRUE) || !(src->flags & (SDL_SRCALPHA|SDL_SRCCOLORKEY)))
+			{
+				accelerated = 1;
+			}
+		}
+		else
+		{
+			if ( ! (src->flags & (SDL_SRCALPHA|SDL_SRCCOLORKEY) ) )
+			{
+				accelerated = 1;
+			}
+		}
+	}
+
+	if (accelerated)
 	{
 		src->flags |= SDL_HWACCEL;
 		src->map->hw_blit = os4video_HWAccelBlit;
 
 		dprintf("Hardware blitting supported\n");
-
-		return 1;
 	}
 	else
 	{
 		src->flags &= ~SDL_HWACCEL;
 
 		dprintf("Hardware blitting not supported\n");
+	}
+	
+	return accelerated;
+}
 
+int os4video_SetHWAlpha(_THIS, SDL_Surface *src, Uint8 value)
+{
+	if (src->hwdata && (src->format->BitsPerPixel > 8) && (_this->hidden->haveCompositing == TRUE))
+	{
 		return 0;
 	}
+	
+	return -1;
+}
+
+static void os4video_CreateAlphaMask(struct BitMap *src_bm, struct BitMap *mask_bm, Uint32 key)
+{
+	struct RenderInfo src_ri;
+	
+	LONG src_lock = SDL_IP96->p96LockBitMap(src_bm, (uint8 *)&src_ri, sizeof(src_ri));
+
+	if (src_lock)
+	{
+		struct RenderInfo mask_ri;
+		
+		LONG mask_lock = SDL_IP96->p96LockBitMap(mask_bm, (uint8 *)&mask_ri, sizeof(mask_ri));
+		
+		if (mask_lock)
+		{
+			Uint32 bytes_per_pixel = SDL_IP96->p96GetBitMapAttr(src_bm, P96BMA_BYTESPERPIXEL);
+
+			int y;
+		
+			for (y = 0; y < mask_bm->Rows; y++)
+			{
+				int x;
+				uint8 *mask_ptr = (uint8 *)mask_ri.Memory + y * mask_ri.BytesPerRow;
+		       
+				switch(bytes_per_pixel)
+				{
+					case 2:
+					{
+						uint16 key16 = key;
+
+						uint16 *src_ptr = (uint16 *)((uint8 *)src_ri.Memory + y * src_ri.BytesPerRow);
+		       
+						for (x = 0; x < mask_ri.BytesPerRow; x++)
+						{
+							mask_ptr[x] = (src_ptr[x] == key16) ? 0 : 0xFF;
+						}
+					} break;
+		
+					case 4:
+					{
+						uint32 *src_ptr = (uint32 *)((uint8 *)src_ri.Memory + y * src_ri.BytesPerRow);
+
+						for (x = 0; x < mask_ri.BytesPerRow; x++)
+						{
+							mask_ptr[x] = (src_ptr[x] == key) ? 0 : 0xFF;
+			    		}
+					} break;
+		
+					// TODO: Should we support 24-bit modes?
+					default:
+						dprintf("Unknown pixel format!\n");
+		    			break;
+				}
+			}
+		
+			SDL_IP96->p96UnlockBitMap(mask_bm, mask_lock);
+		}
+		
+		SDL_IP96->p96UnlockBitMap(src_bm, src_lock);
+	}
+} 
+
+int os4video_SetHWColorKey(_THIS, SDL_Surface *src, Uint32 key)
+{
+	if (src->hwdata && (src->format->BitsPerPixel > 8) && (_this->hidden->haveCompositing == TRUE))
+	{
+		if (src->hwdata->colorkey_bm == NULL)
+		{
+			dprintf("Creating new alpha mask\n");
+			
+			src->hwdata->colorkey_bm = SDL_IGraphics->AllocBitMapTags(
+				src->w,
+				src->h,
+				8,
+				BMATags_PixelFormat, PIXF_ALPHA8,
+				BMATags_Displayable, TRUE,
+				TAG_DONE);
+		}
+
+		if (src->hwdata->colorkey_bm)
+		{
+			os4video_CreateAlphaMask(
+				src->hwdata->bm,
+				src->hwdata->colorkey_bm,
+				key);
+
+			return 0;
+		}
+	}
+
+	return -1;
 }
 
 int os4video_FlipHWSurface(_THIS, SDL_Surface *surface)

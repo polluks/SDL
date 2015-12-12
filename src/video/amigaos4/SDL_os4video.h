@@ -87,6 +87,7 @@ struct private_hwdata
 {
 	hwdata_type        type;
 	struct BitMap     *bm;
+	struct BitMap     *colorkey_bm;	/* Colorkey is implemented with 8-bit alpha mask */
 	struct RenderInfo  ri;
 	LONG               lock;
 };
@@ -138,6 +139,8 @@ struct SDL_PrivateVideoData
 	struct GLContextIFace *IGL;
 	struct BitMap *m_frontBuffer;
 	struct BitMap *m_backBuffer;
+	
+	BOOL 					haveCompositing; 				/* needs graphics.library V53 */
 };
 
 #endif

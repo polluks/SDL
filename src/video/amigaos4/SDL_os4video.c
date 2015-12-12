@@ -37,7 +37,7 @@
 #include <proto/Picasso96API.h>
 #include <proto/icon.h>
 
-//#define DEBUG
+#define DEBUG
 #include "../../main/amigaos4/SDL_os4debug.h"
 
 extern void SDL_Quit(void);
@@ -272,7 +272,6 @@ os4video_DeleteDevice(_THIS)
 
 		IExec->FreeVec(_this->hidden);
 		IExec->FreeVec(_this);
-
 	}
 }
 
@@ -329,6 +328,12 @@ SDL_VideoDevice *os4video_CreateDevice(int devnum)
 	if (!open_libraries())
 		goto fail;
 
+	if (gfxbase->lib_Version >= 53)
+	{
+		dprintf("Compositing should be possible, gfx version %d\n", gfxbase->lib_Version);
+		os4video_device->hidden->haveCompositing = TRUE;
+	}
+
 	SDL_strlcpy(os4video_device->hidden->currentCaption, "SDL_Window", 128);
 	SDL_strlcpy(os4video_device->hidden->currentIconCaption, "SDL Application", 128);
 
@@ -362,7 +367,9 @@ SDL_VideoDevice *os4video_CreateDevice(int devnum)
 	os4video_device->UpdateMouse = os4video_UpdateMouse;
 	os4video_device->CheckMouseMode = os4video_CheckMouseMode;
 	os4video_device->ToggleFullScreen = os4video_ToggleFullScreen;
-
+	os4video_device->SetHWAlpha = os4video_SetHWAlpha;
+	os4video_device->SetHWColorKey = os4video_SetHWColorKey;
+	
 #if SDL_VIDEO_OPENGL
 	os4video_device->GL_LoadLibrary = os4video_GL_LoadLibrary;
 	os4video_device->GL_GetProcAddress = os4video_GL_GetProcAddress;
@@ -430,7 +437,9 @@ os4video_VideoInit(_THIS, SDL_PixelFormat *vformat)
 	_this->info.wm_available = 1;
 	_this->info.blit_hw      = 1;
 	_this->info.blit_fill    = 1;
-
+	_this->info.blit_hw_A    = hidden->haveCompositing ? 1 : 0;
+	_this->info.blit_hw_CC   = hidden->haveCompositing ? 1 : 0;
+    
 	/* Get Video Mem */
 	SDL_IP96->p96GetBoardDataTags(0, P96BD_FreeMemory, &freeMem);
 	_this->info.video_mem = freeMem;
@@ -560,7 +569,6 @@ os4video_ListModes(_THIS, SDL_PixelFormat *format, Uint32 flags)
 		return hidden->Modes[p96format];
 	}
 }
-
 
 static struct Screen *openSDLscreen(int width, int height, uint32 modeId)
 {
@@ -859,6 +867,8 @@ initOffScreenBuffer(struct OffScreenBuffer *offBuffer, uint32 width, uint32 heig
 		offBuffer->pixels =  (void*)SDL_IP96->p96GetBitMapAttr(offBuffer->bitmap, P96BMA_MEMORY);
 	    offBuffer->pitch  =         SDL_IP96->p96GetBitMapAttr(offBuffer->bitmap, P96BMA_BYTESPERROW);
 
+		dprintf("pixels %d, pitch %d\n", offBuffer->pixels, offBuffer->pitch);
+		
 		success = TRUE;
 	}
 	else
@@ -1096,7 +1106,6 @@ os4video_CreateDisplay(_THIS, SDL_Surface *current, int width, int height, int b
 		}
 		else
 		{
-
 			/* Don't allow palette-mapped windowed surfaces -
 			 * We can't get exclusive access to the palette and
 			 * the results are ugly. Force a screen instead.

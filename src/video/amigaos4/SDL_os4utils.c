@@ -186,13 +186,10 @@ os4video_PPFtoPF(SDL_PixelFormat *vformat, uint32 p96Format)
 		vformat->Bshift = 0;
 		vformat->Bloss = 0;
 
-#if 0
-/* Don't report alpha mask, since P96 can't usefully support it */
-
 		vformat->Amask = 0xFF000000;
 		vformat->Ashift = 24;
 		vformat->Aloss = 0;
-#endif
+
 		break;
 
     case RGBFB_A8B8G8R8:
@@ -210,26 +207,20 @@ os4video_PPFtoPF(SDL_PixelFormat *vformat, uint32 p96Format)
 		vformat->Bmask = 0x00FF0000;
 		vformat->Bshift = 16;
 		vformat->Bloss = 0;
-#if 0
-/* Don't report alpha mask, since P96 can't usefully support it */
 
 		vformat->Amask = 0xFF000000;
 		vformat->Ashift = 24;
 		vformat->Aloss = 0;
-#endif
+
 		break;
 
     case RGBFB_R8G8B8A8:
 		vformat->BitsPerPixel = 32;
 		vformat->BytesPerPixel = 4;
 
-#if 0
-/* Don't report alpha mask, since P96 can't usefully support it */
-
 		vformat->Amask = 0x000000FF;
 		vformat->Ashift = 0;
 		vformat->Aloss = 0;
-#endif
 
 		vformat->Bmask = 0x0000FF00;
 		vformat->Bshift = 8;
@@ -248,13 +239,9 @@ os4video_PPFtoPF(SDL_PixelFormat *vformat, uint32 p96Format)
 		vformat->BitsPerPixel = 32;
 		vformat->BytesPerPixel = 4;
 
-#if 0
-/* Don't report alpha mask, since P96 can't usefully support it */
-
 		vformat->Amask = 0x000000FF;
 		vformat->Ashift = 0;
 		vformat->Aloss = 0;
-#endif
 
 		vformat->Rmask = 0x0000FF00;
 		vformat->Rshift = 8;
@@ -458,7 +445,7 @@ const RGBFTYPE *os4video_GetP96FormatsForBpp (uint32 bpp)
 	static const RGBFTYPE preferredFmts_15bit[] = { RGBFB_R5G5B5, RGBFB_R5G5B5PC, RGBFB_NONE};
 	static const RGBFTYPE preferredFmts_16bit[] = { RGBFB_R5G6B5, RGBFB_R5G6B5PC, RGBFB_NONE};
 	static const RGBFTYPE preferredFmts_24bit[] = { RGBFB_R8G8B8, RGBFB_B8G8R8, RGBFB_NONE};
-	static const RGBFTYPE preferredFmts_32bit[] = { RGBFB_A8R8G8B8, RGBFB_R8G8B8A8, RGBFB_B8G8R8A8, RGBFB_A8R8G8B8, RGBFB_NONE };
+	static const RGBFTYPE preferredFmts_32bit[] = { RGBFB_A8R8G8B8, RGBFB_R8G8B8A8, RGBFB_B8G8R8A8, /*RGBFB_A8R8G8B8 duplicate?*/ RGBFB_NONE };
 	static const RGBFTYPE unsupportedFmt[]      = { RGBFB_NONE };
 
 	switch (bpp)
