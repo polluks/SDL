@@ -102,7 +102,7 @@ void paintTexture32(SDL_Surface *texture, Uint32 color, int useColorKey)
 		{
 			// Make stripes
 			for (x = 1; x < texture->w - 1; x++ )
-        	{
+			{
 				if ((x % 2) == 1)
 				{
 					p[x] = colorKey;
@@ -132,14 +132,14 @@ void paintTexture16(SDL_Surface* texture, Uint16 color, int useColorKey)
 		{
 			// Make stripes
 			for (x = 1; x < texture->w - 1; x++ )
-        	{
+			{
 				if ((x % 2) == 1)
 				{
 					p[x] = colorKey;
 				}
 			}
 		}
-    }
+	}
 }
 
 void paintTexture8(SDL_Surface* texture, Uint8 color, int useColorKey)
@@ -163,7 +163,7 @@ void paintTexture8(SDL_Surface* texture, Uint8 color, int useColorKey)
 		{
 			// Make stripes
 			for (x = 1; x < texture->w - 1; x++ )
-        	{
+			{
 				if ((x % 2) == 1)
 				{
 					p[x] = colorKey;
@@ -203,7 +203,7 @@ SDL_Surface *allocTexture(Uint32 depth, int useHardware, int usePerSurfaceAlpha)
 // Create a simple palette for 8-bit displays
 void createPalette(SDL_Surface * surface)
 {
-    // r, g, b, unused
+	// r, g, b, unused
 	SDL_Color colors[] = {
 		{  0,   0,   0, 255}, // black
 		{255, 255, 255, 255}, // white
@@ -364,7 +364,7 @@ void draw(SDL_Surface * texture)
 	int i;
  
 	for (i = 0; i < BLITS_PER_ITERATION; i++)
-	{    
+	{
 		SDL_Rect s, d;
 	        
 		s.w = BLIT_WIDTH;
@@ -383,7 +383,7 @@ void draw(SDL_Surface * texture)
 	SDL_Flip(view);
 
 	if (sleep)
-	{	
+	{
 		SDL_Delay(sleep);
 	}
 }
@@ -402,7 +402,7 @@ SDL_bool checkQuit()
 				{
 					printf("*** QUIT ***\n");
 					quit = SDL_TRUE;
-				}else printf("%d\n", e.key.keysym.sym);
+				}
 			} break;
 		}
 	}
@@ -420,7 +420,7 @@ void test(Uint32 bytesPerPixel, int iterations)
 	{
 		if (checkQuit())
 		{
-		    return;
+			return;
 		}
 		
 		draw(red);
@@ -432,11 +432,13 @@ void test(Uint32 bytesPerPixel, int iterations)
 	
 	Uint32 duration = finish - start;
 	
-	Uint32 blits = iterations * 3 * BLITS_PER_ITERATION;
+	Uint32 frames = iterations * 3;
+	Uint32 blits = frames * BLITS_PER_ITERATION;
 	Uint64 bytes = blits * BLIT_WIDTH * BLIT_HEIGHT * bytesPerPixel;
 	
-	printf("RESULT: duration %u ms, %u blits, %.1f blits/s, %llu bytes, %llu bytes/s\n",
+	printf("RESULT: duration %u ms, %.1f frames/s, %u blits, %.1f blits/s, %llu bytes, %llu bytes/s\n",
 		duration,
+		1000.0f * frames / duration,
 		blits,
 		1000.0f * blits / duration,
 		bytes,
@@ -452,7 +454,7 @@ void parseArgs(int argc, char* argv[])
 		
 		if (argc > 2)
 		{
-		    sleep = atoi(argv[2]);
+			sleep = atoi(argv[2]);
 		}
 	}
 	
@@ -485,7 +487,7 @@ int main(int argc, char* argv[])
 	ModeInfo tests[] =
 	{
 #if 0
-	    // Window modes are currently always SW-only, but let's have them as a reference
+		// Window modes are currently always SW-only, but let's have them as a reference
 		{ WINDOW, SW, PER_PIXEL_ALPHA, NO_COLOR_KEY, 16 },
 		{ WINDOW, HW, PER_PIXEL_ALPHA, NO_COLOR_KEY, 16 },
 		{ WINDOW, SW, PER_PIXEL_ALPHA, NO_COLOR_KEY, 32 },
