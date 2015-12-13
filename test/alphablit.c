@@ -26,6 +26,10 @@ SDL: replace deprecated OS functions
 #include <stdio.h>
 #include <proto/exec.h>
 
+#ifndef MIN
+#define MIN(x,y) (((x) < (y)) ? (x) : (y))
+#endif
+
 #define WIDTH 640
 #define HEIGHT 480
 
@@ -245,7 +249,7 @@ SDL_Surface * createTexture(Uint32 depth, SDL_Color color, int useHardware, int 
 	if (useColorKey)
 	{
 		colorKey = SDL_MapRGB(texture->format, 0xFF, 0xFF, 0xFF);
-		printf("Color key: 0x%X\n", colorKey);
+		//printf("Color key: 0x%X\n", colorKey);
 	}
 
 	if (depth == 32)
@@ -326,6 +330,7 @@ typedef struct ModeInfo
 	int useSurfaceAlpha;
 	int useColorKey;
 	int depth;
+	int iterations;
 }  ModeInfo;
 
 void setMode(ModeInfo mi)
@@ -405,7 +410,7 @@ SDL_bool checkQuit()
 	return quit;
 }
 
-void test(Uint32 bytesPerPixel)
+void test(Uint32 bytesPerPixel, int iterations)
 {   
 	Uint32 start = SDL_GetTicks();
     
@@ -496,24 +501,24 @@ int main(int argc, char* argv[])
 		{ WINDOW, SW, PER_SURFACE_ALPHA, USE_COLOR_KEY, 32 },
 		{ WINDOW, HW, PER_SURFACE_ALPHA, USE_COLOR_KEY, 32 },
 #else
-		{ FULLSCREEN, SW, NO_ALPHA, NO_COLOR_KEY, 8 },
-		{ FULLSCREEN, HW, NO_ALPHA, NO_COLOR_KEY, 8 },
-		{ FULLSCREEN, SW, PER_PIXEL_ALPHA, NO_COLOR_KEY, 16 },
-		{ FULLSCREEN, HW, PER_PIXEL_ALPHA, NO_COLOR_KEY, 16 },
-		{ FULLSCREEN, SW, PER_PIXEL_ALPHA, NO_COLOR_KEY, 32 },
-		{ FULLSCREEN, HW, PER_PIXEL_ALPHA, NO_COLOR_KEY, 32 },
+		{ FULLSCREEN, SW, NO_ALPHA, NO_COLOR_KEY, 8, 100 },
+		{ FULLSCREEN, HW, NO_ALPHA, NO_COLOR_KEY, 8, 100 },
+		{ FULLSCREEN, SW, PER_PIXEL_ALPHA, NO_COLOR_KEY, 16, 100 },
+		{ FULLSCREEN, HW, PER_PIXEL_ALPHA, NO_COLOR_KEY, 16, 100 },
+		{ FULLSCREEN, SW, PER_PIXEL_ALPHA, NO_COLOR_KEY, 32, 100 },
+		{ FULLSCREEN, HW, PER_PIXEL_ALPHA, NO_COLOR_KEY, 32, 100 },
 		
-		{ FULLSCREEN, SW, PER_SURFACE_ALPHA, NO_COLOR_KEY, 16 },
-		{ FULLSCREEN, HW, PER_SURFACE_ALPHA, NO_COLOR_KEY, 16 },
-		{ FULLSCREEN, SW, PER_SURFACE_ALPHA, NO_COLOR_KEY, 32 },
-		{ FULLSCREEN, HW, PER_SURFACE_ALPHA, NO_COLOR_KEY, 32 },
+		{ FULLSCREEN, SW, PER_SURFACE_ALPHA, NO_COLOR_KEY, 16, 100 },
+		{ FULLSCREEN, HW, PER_SURFACE_ALPHA, NO_COLOR_KEY, 16, 100 },
+		{ FULLSCREEN, SW, PER_SURFACE_ALPHA, NO_COLOR_KEY, 32, 100 },
+		{ FULLSCREEN, HW, PER_SURFACE_ALPHA, NO_COLOR_KEY, 32, 100 },
 
-		{ FULLSCREEN, SW, NO_ALPHA, USE_COLOR_KEY, 8 },
-		{ FULLSCREEN, HW, NO_ALPHA, USE_COLOR_KEY, 8 },
-		{ FULLSCREEN, SW, PER_SURFACE_ALPHA, USE_COLOR_KEY, 16 },
-		{ FULLSCREEN, HW, PER_SURFACE_ALPHA, USE_COLOR_KEY, 16 },
-		{ FULLSCREEN, SW, PER_SURFACE_ALPHA, USE_COLOR_KEY, 32 },
-		{ FULLSCREEN, HW, PER_SURFACE_ALPHA, USE_COLOR_KEY, 32 },
+		{ FULLSCREEN, SW, NO_ALPHA, USE_COLOR_KEY, 8, 10 },
+		{ FULLSCREEN, HW, NO_ALPHA, USE_COLOR_KEY, 8, 10 }, // 8-bit colorkey HW test is really slow, let's test only 10 iterations
+		{ FULLSCREEN, SW, PER_SURFACE_ALPHA, USE_COLOR_KEY, 16, 100 },
+		{ FULLSCREEN, HW, PER_SURFACE_ALPHA, USE_COLOR_KEY, 16, 100 },
+		{ FULLSCREEN, SW, PER_SURFACE_ALPHA, USE_COLOR_KEY, 32, 100 },
+		{ FULLSCREEN, HW, PER_SURFACE_ALPHA, USE_COLOR_KEY, 32, 100 },
 #endif
 	};
     
@@ -532,7 +537,7 @@ int main(int argc, char* argv[])
 			printf("...Running test #%d...\n", t);
 		
 			setMode(tests[t]);
-			test(tests[t].depth / 8);
+			test(tests[t].depth / 8, MIN(tests[t].iterations, iterations));
 		}
 	}
 
