@@ -41,11 +41,6 @@ SDL: replace deprecated OS functions
 
 static SDL_bool quit = SDL_FALSE;
 
-static Uint32 colorKey;
-
-static Uint32 iterations = 100;
-static Uint32 sleep = 0;
-
 static SDL_Surface * view;
 
 static SDL_Surface * red;
@@ -62,7 +57,7 @@ static const SDL_Color BLUE_COLOR = {   0,   0, 255, 255 };
 #define DEBUGME
 #endif
 
-void checkVideoInfo()
+static void checkVideoInfo()
 {
 	const SDL_VideoInfo * vi = SDL_GetVideoInfo();
 
@@ -70,7 +65,8 @@ void checkVideoInfo()
 		vi->hw_available, vi->blit_hw, vi->blit_hw_A, vi->blit_hw_CC, vi->blit_sw);
 }
 
-void debugSurface(SDL_Surface *surface)
+/*
+static void debugSurface(SDL_Surface *surface)
 {
 	printf("Surface %d*%d (bits %d, bytes %d) flags: 0x%X\n",
 		surface->w, surface->h,
@@ -78,8 +74,9 @@ void debugSurface(SDL_Surface *surface)
 		surface->format->BytesPerPixel,
 		surface->flags);
 }
+*/
 
-void paintTexture32(SDL_Surface *texture, Uint32 color, int useColorKey)
+static void paintTexture32(SDL_Surface *texture, Uint32 color, SDL_bool useColorKey, Uint32 colorKey)
 {
 	Uint32 * p = (Uint32 *)texture->pixels;
     
@@ -112,7 +109,7 @@ void paintTexture32(SDL_Surface *texture, Uint32 color, int useColorKey)
 	}
 }
 
-void paintTexture16(SDL_Surface* texture, Uint16 color, int useColorKey)
+static void paintTexture16(SDL_Surface* texture, Uint16 color, SDL_bool useColorKey, Uint16 colorKey)
 {
 	Uint16 * p = (Uint16 *)texture->pixels;
 	   
@@ -142,7 +139,7 @@ void paintTexture16(SDL_Surface* texture, Uint16 color, int useColorKey)
 	}
 }
 
-void paintTexture8(SDL_Surface* texture, Uint8 color, int useColorKey)
+static void paintTexture8(SDL_Surface* texture, Uint8 color, SDL_bool useColorKey, Uint16 colorKey)
 {
 	Uint8* p = (Uint8 *)texture->pixels;
 	//printf("Color %d\n", color);
@@ -173,9 +170,9 @@ void paintTexture8(SDL_Surface* texture, Uint8 color, int useColorKey)
 	}
 }
 
-SDL_Surface *allocTexture(Uint32 depth, int useHardware, int usePerSurfaceAlpha)
+static SDL_Surface *allocTexture(Uint32 depth, int useHardware, int usePerSurfaceAlpha)
 {
-	int flags = (useHardware ? SDL_HWSURFACE : SDL_SWSURFACE);
+	int flags = (useHardware) ? SDL_HWSURFACE : SDL_SWSURFACE;
 	
 	Uint32 rmask = 0x0;
 	Uint32 gmask = 0x0;
@@ -189,7 +186,7 @@ SDL_Surface *allocTexture(Uint32 depth, int useHardware, int usePerSurfaceAlpha)
 		rmask = 0x00FF0000;
 		gmask = 0x0000FF00;
 		bmask = 0x000000FF;
-		amask = (usePerSurfaceAlpha) ? 0x00 : 0xFF000000; // TODO: there is always Amask from 32-bit SDL_HWSURFACE
+		amask = (usePerSurfaceAlpha) ? 0x00 : 0xFF000000; // TODO: there is always Amask with 32-bit SDL_HWSURFACE
 	}
 	else if (depth == 16)
 	{
@@ -201,7 +198,7 @@ SDL_Surface *allocTexture(Uint32 depth, int useHardware, int usePerSurfaceAlpha)
 }
 
 // Create a simple palette for 8-bit displays
-void createPalette(SDL_Surface * surface)
+static void createPalette(SDL_Surface * surface)
 {
 	// r, g, b, unused
 	SDL_Color colors[] = {
@@ -215,9 +212,21 @@ void createPalette(SDL_Surface * surface)
 	SDL_SetColors(surface, colors, 0, sizeof(colors) / sizeof(SDL_Color));
 }
 
-SDL_Surface * createTexture(Uint32 depth, SDL_Color color, int useHardware, int usePerSurfaceAlpha, int useColorKey)
+
+typedef struct ModeInfo
 {
-	SDL_Surface * texture = allocTexture(depth, useHardware, usePerSurfaceAlpha);
+	int useFullscreen;
+	int useHardware;
+	int useSurfaceAlpha;
+	int useColorKey;
+	int depth;
+	int iterations;
+}  ModeInfo;
+
+
+static SDL_Surface * createTexture(SDL_Color color, ModeInfo mi)
+{
+	SDL_Surface * texture = allocTexture(mi.depth, mi.useHardware, mi.useSurfaceAlpha);
 
 	if (texture == NULL)
 	{
@@ -226,11 +235,11 @@ SDL_Surface * createTexture(Uint32 depth, SDL_Color color, int useHardware, int 
 		return NULL;
 	}
 
-	if (depth == 8)
+	if (mi.depth == 8)
 	{
 		createPalette(texture);
 	}
-	else if (usePerSurfaceAlpha)
+	else if (mi.useSurfaceAlpha)
 	{
 		SDL_SetAlpha(texture, SDL_SRCALPHA, 0x80);
 		//printf("psa %d am 0x%x\n", texture->format->alpha, texture->format->Amask);
@@ -238,6 +247,16 @@ SDL_Surface * createTexture(Uint32 depth, SDL_Color color, int useHardware, int 
 
 	//debugSurface(texture);
 
+	Uint32 colorKey = 0;
+	
+	if (mi.useColorKey)
+	{
+		colorKey = SDL_MapRGB(texture->format, 0xFF, 0xFF, 0xFF);
+		//printf("Color key: 0x%X\n", colorKey);
+	}
+
+	Uint32 surfaceColor = SDL_MapRGB(texture->format, color.r, color.g, color.b);
+	
 	if (SDL_MUSTLOCK(texture))
 	{
 		if (SDL_LockSurface(texture) < 0)
@@ -245,24 +264,18 @@ SDL_Surface * createTexture(Uint32 depth, SDL_Color color, int useHardware, int 
 			return texture;
 		}
 	}
-
-	if (useColorKey)
+	
+	if (mi.depth == 32)
 	{
-		colorKey = SDL_MapRGB(texture->format, 0xFF, 0xFF, 0xFF);
-		//printf("Color key: 0x%X\n", colorKey);
+	    paintTexture32(texture, surfaceColor, mi.useColorKey, colorKey);
 	}
-
-	if (depth == 32)
+	else if (mi.depth == 16)
 	{
-	    paintTexture32(texture, SDL_MapRGB(texture->format, color.r, color.g, color.b), useColorKey);
-	}
-	else if (depth == 16)
-	{
-		paintTexture16(texture, SDL_MapRGB(texture->format, color.r, color.g, color.b), useColorKey);
+		paintTexture16(texture, surfaceColor, mi.useColorKey, colorKey);
     }
-    else if (depth == 8)
+    else if (mi.depth == 8)
     {
-    	paintTexture8(texture, SDL_MapRGB(texture->format, color.r, color.g, color.b), useColorKey);
+    	paintTexture8(texture, surfaceColor, mi.useColorKey, colorKey);
     }
     
 	if (SDL_MUSTLOCK(texture))
@@ -270,7 +283,7 @@ SDL_Surface * createTexture(Uint32 depth, SDL_Color color, int useHardware, int 
 		SDL_UnlockSurface(texture);
 	}
 
-	if (useColorKey)
+	if (mi.useColorKey)
 	{
 		SDL_SetColorKey(texture, SDL_SRCCOLORKEY, colorKey);
 	}
@@ -278,7 +291,7 @@ SDL_Surface * createTexture(Uint32 depth, SDL_Color color, int useHardware, int 
 	return texture;
 }
 
-void freeTextures()
+static void freeTextures()
 {
 	if (red)
 	{
@@ -299,58 +312,47 @@ void freeTextures()
 	}
 }
 
-void generateTextures(int useHardware, int usePerSurfaceAlpha, int useColorKey, int depth)
+static void generateTextures(ModeInfo mi)
 {
 	freeTextures();
-	
-	if (depth == 32)
-	{
-		red = createTexture(32, RED_COLOR, useHardware, usePerSurfaceAlpha, useColorKey);
-		green = createTexture(32, GREEN_COLOR, useHardware, usePerSurfaceAlpha, useColorKey);
-		blue = createTexture(32, BLUE_COLOR, useHardware, usePerSurfaceAlpha, useColorKey);
-	}
-	else if (depth == 16)
-	{
-		red = createTexture(16, RED_COLOR, useHardware, usePerSurfaceAlpha, useColorKey);
-		green = createTexture(16, GREEN_COLOR, useHardware, usePerSurfaceAlpha, useColorKey);
-		blue = createTexture(16, BLUE_COLOR, useHardware, usePerSurfaceAlpha, useColorKey);
-	}
-	else if (depth == 8)
-	{
-		red = createTexture(8, RED_COLOR, useHardware, usePerSurfaceAlpha, useColorKey);
-		green = createTexture(8, GREEN_COLOR, useHardware, usePerSurfaceAlpha, useColorKey);
-		blue = createTexture(8, BLUE_COLOR, useHardware, usePerSurfaceAlpha, useColorKey);
-	}
+
+	red = createTexture(RED_COLOR, mi);
+	green = createTexture(GREEN_COLOR, mi);
+	blue = createTexture(BLUE_COLOR, mi);	
 }
 
-typedef struct ModeInfo
-{
-	int useFullscreen;
-	int useHardware;
-	int useSurfaceAlpha;
-	int useColorKey;
-	int depth;
-	int iterations;
-}  ModeInfo;
 
-void setMode(ModeInfo mi)
+static const char * getAlphaString(Uint32 type)
+{
+	static const char * strings[] = { "Per-pixel", "Per-surface", "No alpha" };
+	
+	if (type < sizeof(strings) / sizeof(strings[0]))
+	{
+		return strings[type];
+	}
+	
+	return strings[2];
+}
+
+static void setMode(ModeInfo mi)
 {
 	int flags = (mi.useFullscreen ? SDL_FULLSCREEN : 0) | (mi.useHardware ? SDL_HWSURFACE : SDL_SWSURFACE) | SDL_HWPALETTE;
     
-	printf("Requested mode: [%s] HW acceleration: [%s], Depth: [%d] bits, Alpha: [%s], Colorkey: [%s]\n",
+	printf("Requested mode: [%s] HW acceleration: [%s], Depth: [%d-bit], Alpha: [%s], Colorkey: [%s]\n",
 		mi.useFullscreen ? "Fullscreen" : "Window",
 		mi.useHardware ? "Yes" : "No",
 		mi.depth,
-		mi.useSurfaceAlpha ? "Per-surface" : "Per-pixel",
+		getAlphaString(mi.useSurfaceAlpha),
 		mi.useColorKey ? "Yes" : "No");
     
 	view = SDL_SetVideoMode(WIDTH, HEIGHT, mi.depth, flags);
   
 	checkVideoInfo();
 
-	printf("Main surface flags: 0x%X\n", view->flags);
+	printf("Display surface flags: 0x%X\n", view->flags);
 	
-	generateTextures(mi.useHardware, mi.useSurfaceAlpha, mi.useColorKey, mi.depth);
+	generateTextures(mi);
+
 	if (mi.depth == 8)
 	{
 		createPalette(view);
@@ -359,7 +361,7 @@ void setMode(ModeInfo mi)
 	//SDL_Delay(1000);
 }
 
-void draw(SDL_Surface * texture)
+static void draw(SDL_Surface * texture, Uint32 sleep)
 {
 	int i;
  
@@ -388,7 +390,7 @@ void draw(SDL_Surface * texture)
 	}
 }
 
-SDL_bool checkQuit()
+static SDL_bool checkQuit()
 {
 	SDL_Event e;
 	
@@ -410,11 +412,11 @@ SDL_bool checkQuit()
 	return quit;
 }
 
-void test(Uint32 bytesPerPixel, int iterations)
+static void test(Uint32 bytesPerPixel, Uint32 iterations, Uint32 sleep)
 {   
 	Uint32 start = SDL_GetTicks();
     
-	int i;
+	Uint32 i;
     
 	for (i = 0; i < iterations; i++)
 	{
@@ -423,9 +425,9 @@ void test(Uint32 bytesPerPixel, int iterations)
 			return;
 		}
 		
-		draw(red);
-		draw(green);
-		draw(blue);
+		draw(red, sleep);
+		draw(green, sleep);
+		draw(blue, sleep);
 	}
 	
 	Uint32 finish = SDL_GetTicks();
@@ -446,22 +448,22 @@ void test(Uint32 bytesPerPixel, int iterations)
 }
 
 
-void parseArgs(int argc, char* argv[])
+static void parseArgs(int argc, char* argv[], Uint32 *iterations, Uint32 *sleep)
 {
 	if (argc > 1)
 	{
-		iterations = atoi(argv[1]);
+		*iterations = atoi(argv[1]);
 		
 		if (argc > 2)
 		{
-			sleep = atoi(argv[2]);
+			*sleep = atoi(argv[2]);
 		}
 	}
 	
-	printf("Iterations=%d, Delay=%d ms\n", iterations, sleep);
+	printf("Iterations=%d, Delay=%d ms\n", *iterations, *sleep);
 }
 
-void printHelp(void)
+static void printHelp(void)
 {
 	printf("USAGE: 'alphablit <ITER> <DELAY>', where\n"
 		"\t<ITER> is number of test iterations per mode and\n"
@@ -471,8 +473,10 @@ void printHelp(void)
 // TODO: what about enums or bitfields
 #define WINDOW 0
 #define FULLSCREEN 1
+
 #define SW 0
 #define HW 1
+
 #define PER_PIXEL_ALPHA 0
 #define PER_SURFACE_ALPHA 1
 #define NO_ALPHA 2
@@ -525,13 +529,16 @@ int main(int argc, char* argv[])
 	};
     
 	printHelp();
+
+	Uint32 iterations = 100;
+	Uint32 sleep = 0;
     
-	parseArgs(argc, argv);
+	parseArgs(argc, argv, &iterations, &sleep);
     
 	printf("Display size %d*%d, blit size %d*%d\n", WIDTH, HEIGHT, BLIT_WIDTH, BLIT_HEIGHT);
 
 	int t;
-	for (t = 0; t < sizeof(tests) / sizeof(ModeInfo); t++)
+	for (t = 0; t < (sizeof(tests) / sizeof(ModeInfo)); t++)
 	{
 		if (quit == SDL_FALSE)
 		{
@@ -539,7 +546,7 @@ int main(int argc, char* argv[])
 			printf("...Running test #%d...\n", t);
 		
 			setMode(tests[t]);
-			test(tests[t].depth / 8, MIN(tests[t].iterations, iterations));
+			test(tests[t].depth / 8, MIN(tests[t].iterations, iterations), sleep);
 		}
 	}
 
