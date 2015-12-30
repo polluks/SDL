@@ -97,16 +97,28 @@ int os4video_GL_Init(_THIS)
 
 	SDL_IIntuition->GetWindowAttrs(hidden->win,WA_InnerWidth,&w,WA_InnerHeight,&h,TAG_DONE);
 
-	if(!(hidden->m_frontBuffer = SDL_IP96->p96AllocBitMap(w,h,16,BMF_MINPLANES | BMF_DISPLAYABLE,hidden->win->RPort->BitMap,0)))
+	if (!(hidden->m_frontBuffer = SDL_IGraphics->AllocBitMapTags(
+		w,
+		h,
+		16,
+		BMATags_Displayable, TRUE,
+		BMATags_Friend, hidden->win->RPort->BitMap,
+		TAG_DONE)))
 	{
 		SDL_SetError("Failed to allocate a Bitmap for the front buffer");
 		return -1;
 	}
 
-	if(!(hidden->m_backBuffer = SDL_IP96->p96AllocBitMap(w,h,16,BMF_MINPLANES | BMF_DISPLAYABLE,hidden->win->RPort->BitMap,0)))
+	if (!(hidden->m_backBuffer = SDL_IGraphics->AllocBitMapTags(
+		w,
+		h,
+		16,
+		BMATags_Displayable, TRUE,
+		BMATags_Friend, hidden->win->RPort->BitMap,
+		TAG_DONE)))
 	{
 		SDL_SetError("Failed to allocate a Bitmap for the back buffer");
-		SDL_IP96->p96FreeBitMap(hidden->m_frontBuffer);
+		SDL_IGraphics->FreeBitMap(hidden->m_frontBuffer);
 		return -1;
 	}
 
@@ -151,12 +163,12 @@ void os4video_GL_Term(_THIS)
 	{
         if(hidden->m_frontBuffer)
         {
-            SDL_IP96->p96FreeBitMap(hidden->m_frontBuffer);
+            SDL_IGraphics->FreeBitMap(hidden->m_frontBuffer);
             hidden->m_frontBuffer = NULL;
         }
         if(hidden->m_backBuffer)
         {
-            SDL_IP96->p96FreeBitMap(hidden->m_backBuffer);
+            SDL_IGraphics->FreeBitMap(hidden->m_backBuffer);
             hidden->m_backBuffer = NULL;
         }
 

@@ -97,13 +97,14 @@ int os4video_AllocHWSurface(_THIS, SDL_Surface *surface)
 		dprintf("Trying to create %dx%dx%d bitmap (friend %p)\n",
 				surface->w, surface->h, surface->format->BitsPerPixel, friend_bitmap);
 
-		surface->hwdata->bm = SDL_IP96->p96AllocBitMap (surface->w,
-													surface->h,
-													surface->format->BitsPerPixel,
-													BMF_MINPLANES | BMF_DISPLAYABLE,
-													friend_bitmap,
-													0);
-
+		surface->hwdata->bm = SDL_IGraphics->AllocBitMapTags(
+			surface->w,
+			surface->h,
+			surface->format->BitsPerPixel,
+			BMATags_Displayable, TRUE,
+			BMATags_Friend, friend_bitmap,
+			TAG_DONE);
+		
 		if (surface->hwdata->bm)
 		{
 			/* Successfully created bitmap */
@@ -141,9 +142,9 @@ void os4video_FreeHWSurface(_THIS, SDL_Surface *surface)
 		{
 			/* Yes. Free BitMap */
 			dprintf("Freeing bitmap %p\n", surface->hwdata->bm);
-	
-			SDL_IP96->p96FreeBitMap (surface->hwdata->bm);
 
+			SDL_IGraphics->FreeBitMap(surface->hwdata->bm);
+			
 			if (surface->hwdata->colorkey_bm)
 			{
 			    SDL_IGraphics->FreeBitMap(surface->hwdata->colorkey_bm);
@@ -166,17 +167,24 @@ int os4video_LockHWSurface(_THIS, SDL_Surface *surface)
 
 	if (hwdata->bm)
 	{
+	    APTR base_address;
+	    uint32 bytes_per_row;
+	    
 		/* We're locking a surface in video memory (either a full-screen hardware display
 		 * surface or a hardware off-screen surface). We need to get P96 to lock that the
 		 * corresponding bitmap in memory so that we can access the pixels directly
 		 */
-		hwdata->lock = SDL_IP96->p96LockBitMap(hwdata->bm, (uint8 *)&hwdata->ri, sizeof(hwdata->ri));
-
+		hwdata->lock = SDL_IGraphics->LockBitMapTags(
+			hwdata->bm,
+			LBM_BaseAddress, &base_address,
+			LBM_BytesPerRow, &bytes_per_row,
+			TAG_DONE);
+		
 		if (hwdata->lock)
 		{
 			/* Bitmap was successfully locked */
-			surface->pitch  = surface->hwdata->ri.BytesPerRow;
-			surface->pixels = surface->hwdata->ri.Memory;
+			surface->pitch  = bytes_per_row;
+			surface->pixels = base_address;
 
 			if (surface->hwdata->type == hwdata_display_hw)
 			{
@@ -204,7 +212,7 @@ void os4video_UnlockHWSurface(_THIS, SDL_Surface *surface)
 	struct private_hwdata *hwdata = surface->hwdata;
 
 	if (hwdata->bm)
-		SDL_IP96->p96UnlockBitMap(surface->hwdata->bm, surface->hwdata->lock);
+		SDL_IGraphics->UnlockBitMap(surface->hwdata->lock);
 
 	surface->hwdata->lock = 0;
 	surface->pixels = (uint8*)0xcccccccc;
@@ -261,7 +269,7 @@ int os4video_FillHWRect(_THIS, SDL_Surface *dst, SDL_Rect *rect, Uint32 color)
 						| (((color & format->Gmask) >> format->Gshift) << (format->Gloss + 8))
 						| (((color & format->Bmask) >> format->Bshift) <<  format->Bloss);
 
-			SDL_IP96->p96RectFill(rp, xmin, ymin, xmax, ymax, argb_colour);
+			SDL_IGraphics->RectFillColor(rp, xmin, ymin, xmax, ymax, argb_colour);
 		}
 		else
 		{
@@ -427,26 +435,36 @@ int os4video_SetHWAlpha(_THIS, SDL_Surface *src, Uint8 value)
 
 static void os4video_CreateAlphaMask(struct BitMap *src_bm, struct BitMap *mask_bm, Uint32 key)
 {
-	struct RenderInfo src_ri;
+	APTR src_base_address;
+	uint32 src_bytes_per_row;
 	
-	LONG src_lock = SDL_IP96->p96LockBitMap(src_bm, (uint8 *)&src_ri, sizeof(src_ri));
-
+	APTR src_lock = SDL_IGraphics->LockBitMapTags(
+		src_bm,
+		LBM_BaseAddress, &src_base_address,
+		LBM_BytesPerRow, &src_bytes_per_row,
+		TAG_DONE);
+		
 	if (src_lock)
 	{
-		struct RenderInfo mask_ri;
+		APTR mask_base_address;
+		uint32 mask_bytes_per_row;
 		
-		LONG mask_lock = SDL_IP96->p96LockBitMap(mask_bm, (uint8 *)&mask_ri, sizeof(mask_ri));
-		
+		APTR mask_lock = SDL_IGraphics->LockBitMapTags(
+			mask_bm,
+			LBM_BaseAddress, &mask_base_address,
+			LBM_BytesPerRow, &mask_bytes_per_row,
+			TAG_DONE);
+			
 		if (mask_lock)
 		{
-			Uint32 bytes_per_pixel = SDL_IP96->p96GetBitMapAttr(src_bm, P96BMA_BYTESPERPIXEL);
+			Uint32 bytes_per_pixel = SDL_IGraphics->GetBitMapAttr(src_bm, BMA_BYTESPERPIXEL);
 
 			int y;
 		
 			for (y = 0; y < mask_bm->Rows; y++)
 			{
 				int x;
-				uint8 *mask_ptr = (uint8 *)mask_ri.Memory + y * mask_ri.BytesPerRow;
+				uint8 *mask_ptr = (uint8 *)mask_base_address + y * mask_bytes_per_row;
 		       
 				switch(bytes_per_pixel)
 				{
@@ -454,9 +472,9 @@ static void os4video_CreateAlphaMask(struct BitMap *src_bm, struct BitMap *mask_
 					{
 						uint16 key16 = key;
 
-						uint16 *src_ptr = (uint16 *)((uint8 *)src_ri.Memory + y * src_ri.BytesPerRow);
+						uint16 *src_ptr = (uint16 *)((uint8 *)src_base_address + y * src_bytes_per_row);
 		       
-						for (x = 0; x < mask_ri.BytesPerRow; x++)
+						for (x = 0; x < mask_bytes_per_row; x++)
 						{
 							mask_ptr[x] = (src_ptr[x] == key16) ? 0 : 0xFF;
 						}
@@ -464,9 +482,9 @@ static void os4video_CreateAlphaMask(struct BitMap *src_bm, struct BitMap *mask_
 		
 					case 4:
 					{
-						uint32 *src_ptr = (uint32 *)((uint8 *)src_ri.Memory + y * src_ri.BytesPerRow);
+						uint32 *src_ptr = (uint32 *)((uint8 *)src_base_address + y * src_bytes_per_row);
 
-						for (x = 0; x < mask_ri.BytesPerRow; x++)
+						for (x = 0; x < mask_bytes_per_row; x++)
 						{
 							mask_ptr[x] = (src_ptr[x] == key) ? 0 : 0xFF;
 			    		}
@@ -479,10 +497,10 @@ static void os4video_CreateAlphaMask(struct BitMap *src_bm, struct BitMap *mask_
 				}
 			}
 		
-			SDL_IP96->p96UnlockBitMap(mask_bm, mask_lock);
+			SDL_IGraphics->UnlockBitMap(mask_lock);
 		}
 		
-		SDL_IP96->p96UnlockBitMap(src_bm, src_lock);
+		SDL_IGraphics->UnlockBitMap(src_lock);
 	}
 } 
 
@@ -596,9 +614,15 @@ static void os4video_OffscreenHook_8bit (struct Hook *hook, struct RastPort *rp,
 	ULONG  srcPitch = hidden->offScreenBuffer.pitch;
 
 	/* Attempt to lock destination bitmap (screen) */
-	struct RenderInfo dst_ri;
-	LONG   dst_lock = SDL_IP96->p96LockBitMap(rp->BitMap, (uint8 *)&dst_ri, sizeof(dst_ri));
-
+	APTR dst_base_address;
+	uint32 dst_bytes_per_row;
+	
+	APTR dst_lock = SDL_IGraphics->LockBitMapTags(
+		rp->BitMap,
+		LBM_BaseAddress, &dst_base_address,
+		LBM_BytesPerRow, &dst_bytes_per_row,
+		TAG_DONE);
+		
 	if (dst_lock)
 	{
 		uint32 dst;
@@ -609,34 +633,11 @@ static void os4video_OffscreenHook_8bit (struct Hook *hook, struct RastPort *rp,
 		offsetX -= hidden->win->BorderLeft;
 		offsetY -= hidden->win->BorderTop;
 
-		switch (dst_ri.RGBFormat)
-		{
-	    	case RGBFB_R8G8B8:
-        	case RGBFB_B8G8R8:
-        		BytesPerPixel = 3;
-				break;
+		BytesPerPixel = SDL_IGraphics->GetBitMapAttr(
+			rp->BitMap,
+			BMA_BYTESPERPIXEL);
 
-			case RGBFB_R5G6B5PC:
-        	case RGBFB_B5G6R5PC:
-        	case RGBFB_B5G5R5PC:
-        	case RGBFB_R5G5B5PC:
-			case RGBFB_R5G6B5:
-        	case RGBFB_R5G5B5:
-				BytesPerPixel = 2;
-				break;
-
-        	case RGBFB_A8R8G8B8:
-        	case RGBFB_A8B8G8R8:
-        	case RGBFB_R8G8B8A8:
-        	case RGBFB_B8G8R8A8:
-				BytesPerPixel = 4;
-				break;
-			default:
-				BytesPerPixel = 0;
-				break;
-		}
-
-		dst = (uint32)dst_ri.Memory + dst_ri.BytesPerRow * rect->MinY + BytesPerPixel * rect->MinX;
+		dst = (uint32)dst_base_address + dst_bytes_per_row * rect->MinY + BytesPerPixel * rect->MinX;
 		src = (uint32)srcMem  + srcPitch * offsetY + offsetX;
 
 		switch (BytesPerPixel)
@@ -645,7 +646,7 @@ static void os4video_OffscreenHook_8bit (struct Hook *hook, struct RastPort *rp,
 				while (line <= rect->MaxY)
 				{
 					cpy_8_16((void *)dst, (void *)src, rect->MaxX - rect->MinX + 1, hidden->offScreenBuffer.palette);
-					dst += dst_ri.BytesPerRow;
+					dst += dst_bytes_per_row;
 					src += srcPitch;
 					line ++;
              	}
@@ -654,7 +655,7 @@ static void os4video_OffscreenHook_8bit (struct Hook *hook, struct RastPort *rp,
 				while (line <= rect->MaxY)
 				{
 					cpy_8_24((void *)dst, (void *)src, rect->MaxX - rect->MinX + 1, hidden->offScreenBuffer.palette);
-					dst += dst_ri.BytesPerRow;
+					dst += dst_bytes_per_row;
 					src += srcPitch;
 					line ++;
              	}
@@ -663,14 +664,14 @@ static void os4video_OffscreenHook_8bit (struct Hook *hook, struct RastPort *rp,
 				while (line <= rect->MaxY)
 				{
 					cpy_8_32((void *)dst, (void *)src, rect->MaxX - rect->MinX + 1, hidden->offScreenBuffer.palette);
-					dst += dst_ri.BytesPerRow;
+					dst += dst_bytes_per_row;
 					src += srcPitch;
 					line ++;
 				}
 				break;
 		}
 
-		SDL_IP96->p96UnlockBitMap(rp->BitMap, dst_lock);
+		SDL_IGraphics->UnlockBitMap(dst_lock);
 	}
 	else
 		dprintf("Bitmap lock failed\n");

@@ -79,6 +79,45 @@ os4video_PFtoPPF(const SDL_PixelFormat *vf)
 	return RGBFB_NONE;
 }
 
+PIX_FMT
+os4video_PFtoPIXF(const SDL_PixelFormat *vf)
+{
+	if (vf->BitsPerPixel == 8)
+		return PIXF_CLUT;
+	if (vf->BitsPerPixel == 24)
+	{
+		if (vf->Rmask == 0x00FF0000 && vf->Gmask == 0x0000FF00 && vf->Bmask == 0x000000FF)
+			return PIXF_R8G8B8;
+		if (vf->Rmask == 0x000000FF && vf->Gmask == 0x0000FF00 && vf->Bmask == 0x00FF0000)
+			return PIXF_B8G8R8;
+	}
+	else if (vf->BitsPerPixel == 32)
+	{
+		if (vf->Rmask == 0xFF000000 && vf->Gmask == 0x00FF0000 && vf->Bmask == 0x0000FF00)
+			return PIXF_R8G8B8A8;
+		if (vf->Rmask == 0x00FF0000 && vf->Gmask == 0x0000FF00 && vf->Bmask == 0x000000FF)
+			return PIXF_A8R8G8B8;
+		if (vf->Bmask == 0x00FF0000 && vf->Gmask == 0x0000FF00 && vf->Rmask == 0x000000FF)
+			return PIXF_A8B8G8R8;
+		if (vf->Bmask == 0xFF000000 && vf->Gmask == 0x00FF0000 && vf->Rmask == 0x0000FF00)
+			return PIXF_B8G8R8A8;
+	}
+	else if (vf->BitsPerPixel == 16)
+	{
+		if (vf->Rmask == 0xf800 && vf->Gmask == 0x07e0 && vf->Bmask == 0x001f)
+			return PIXF_R5G6B5;
+		if (vf->Rmask == 0x7C00 && vf->Gmask == 0x03e0 && vf->Bmask == 0x001f)
+			return PIXF_R5G5B5;
+	}
+	else if (vf->BitsPerPixel == 15)
+	{
+		if (vf->Rmask == 0x7C00 && vf->Gmask == 0x03e0 && vf->Bmask == 0x001f)
+			return PIXF_R5G5B5;
+	}
+
+	return PIXF_NONE;
+}
+
 BOOL
 os4video_PPFtoPF(SDL_PixelFormat *vformat, uint32 p96Format)
 {
@@ -352,6 +391,37 @@ os4video_RTGFB2Bits(uint32 rgbfmt)
 	return 0;
 }
 
+uint32
+os4video_PIXF2Bits(PIX_FMT rgbfmt)
+{
+	switch(rgbfmt)
+	{
+		case PIXF_CLUT:
+			return 8;
+
+		case PIXF_R8G8B8:
+		case PIXF_B8G8R8:
+			return 24;
+
+		case PIXF_R5G6B5PC:
+		case PIXF_R5G6B5:
+		case PIXF_B5G6R5PC:
+			return 16;
+
+		case PIXF_B5G5R5PC:
+		case PIXF_R5G5B5PC:
+		case PIXF_R5G5B5:
+			return 15;
+
+		case PIXF_A8R8G8B8:
+		case PIXF_A8B8G8R8:
+		case PIXF_R8G8B8A8:
+		case PIXF_B8G8R8A8:
+			return 32;
+	}
+
+	return 0;
+}
 
 static void
 logMode (uint32 mode, uint32 width, uint32 height, uint32 format, const char *message)

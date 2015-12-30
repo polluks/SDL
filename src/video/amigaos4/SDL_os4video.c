@@ -66,7 +66,7 @@ struct KeymapIFace		*SDL_IKeymap;
 
 static BOOL open_libraries(void)
 {
-	gfxbase       = IExec->OpenLibrary("graphics.library", MIN_LIB_VERSION);
+	gfxbase       = IExec->OpenLibrary("graphics.library", 54);
 	layersbase    = IExec->OpenLibrary("layers.library", MIN_LIB_VERSION);
 	p96base       = IExec->OpenLibrary("Picasso96API.library", 0);
 	intuitionbase = IExec->OpenLibrary("intuition.library", MIN_LIB_VERSION);
@@ -313,7 +313,6 @@ SDL_VideoDevice *os4video_CreateDevice(int devnum)
 
 	/* Allocate some storage for the mouse pointer */
 	os4video_device->hidden->mouse = IExec->AllocVecTags( 8, AVT_ClearWithValue, 0, AVT_Type, MEMF_SHARED, TAG_DONE );
-
 
 	/* Setup the user port */
 	os4video_device->hidden->userPort = IExec->AllocSysObject(ASOT_PORT, 0);
@@ -641,7 +640,7 @@ static struct Screen *openSDLscreen(int width, int height, uint32 modeId)
 		SDL_IGraphics->InitRastPort(&tmpRP);
 		tmpRP.BitMap = scr->RastPort.BitMap;
 
-		SDL_IP96->p96RectFill(&tmpRP, 0, 0, width, height, 0);
+		SDL_IGraphics->RectFillColor(&tmpRP, 0, 0, width, height, 0);
 	}
 
 	dprintf("Screen opened\n");
@@ -727,7 +726,7 @@ static void do_blackBackFill (const struct Hook *hook, struct RastPort *rp, cons
 	SDL_IGraphics->InitRastPort(&backfillRP);
 	backfillRP.BitMap = rp->BitMap;
 
-	SDL_IP96->p96RectFill(&backfillRP, rect->MinX, rect->MinY, rect->MaxX, rect->MaxY, 0);
+	SDL_IGraphics->RectFillColor(&backfillRP, rect->MinX, rect->MinY, rect->MaxX, rect->MaxY, 0);
 }
 
 static const struct Hook blackBackFillHook = {
@@ -845,19 +844,26 @@ openSDLwindow(int width, int height, struct Screen *screen, struct MsgPort *user
 static BOOL
 initOffScreenBuffer(struct OffScreenBuffer *offBuffer, uint32 width, uint32 height, SDL_PixelFormat *format)
 {
-	BOOL     success   = FALSE;
-	RGBFTYPE p96format = os4video_PFtoPPF(format);
-	uint32   bpp       = os4video_RTGFB2Bits(p96format);
-
+	BOOL     success     = FALSE;
+	PIX_FMT  pixelFormat = os4video_PFtoPIXF(format);
+	uint32   bpp         = os4video_PIXF2Bits(pixelFormat);
+	
 	/* Round up width/height to nearest 4 pixels */
 	width  = (width + 3) & (~3);
 	height = (height + 3) & (~3);
 
-	dprintf("Allocating a %dx%dx%d off-screen buffer with rgbtype=%d\n", width, height, bpp, p96format);
+	dprintf("Allocating a %dx%dx%d off-screen buffer with rgbtype=%d\n", width, height, bpp, pixelFormat);
 
 	/* Allocate private p96 bitmap using the pixel format */
-	offBuffer->bitmap = SDL_IP96->p96AllocBitMap(width, height, bpp, BMF_CLEAR | BMF_USERPRIVATE, NULL, p96format);
-
+	offBuffer->bitmap = SDL_IGraphics->AllocBitMapTags(
+		width,
+		height,
+		bpp,
+		BMATags_Clear, TRUE,
+		BMATags_UserPrivate, TRUE,
+		BMATags_PixelFormat, pixelFormat,
+		TAG_DONE);
+		
 	if (offBuffer->bitmap != NULL)
 	{
 		offBuffer->width  =  width;
@@ -886,7 +892,7 @@ freeOffScreenBuffer(struct OffScreenBuffer *offBuffer)
 	{
 		dprintf("Freeing off-screen buffer\n");
 
-		SDL_IP96->p96FreeBitMap(offBuffer->bitmap);
+		SDL_IGraphics->FreeBitMap(offBuffer->bitmap);
 
 		offBuffer->bitmap = NULL;
 	}
@@ -1338,6 +1344,59 @@ static char *get_flags_str(Uint32 flags)
 }
 #endif
 
+static SDL_bool os4video_AllocateOpenGLBuffers(_THIS, int width, int height)
+{
+	struct SDL_PrivateVideoData *hidden = _this->hidden;
+	
+	if (hidden->m_frontBuffer)
+	{
+		SDL_IGraphics->FreeBitMap(hidden->m_frontBuffer);
+		hidden->m_frontBuffer = NULL;
+	}
+	
+	if (hidden->m_backBuffer)
+	{
+		SDL_IGraphics->FreeBitMap(hidden->m_backBuffer);
+		hidden->m_backBuffer = NULL;
+	}
+
+	if (!(hidden->m_frontBuffer = SDL_IGraphics->AllocBitMapTags(
+		width,
+		height,
+		16,
+		BMATags_Displayable, TRUE,
+		BMATags_Friend, hidden->win->RPort->BitMap,
+		TAG_DONE)))
+	{
+		dprintf("Fatal error: Can't allocate memory for buffer bitmap\n");
+		SDL_Quit();
+		return SDL_FALSE;
+	}
+
+	if (!(hidden->m_backBuffer = SDL_IGraphics->AllocBitMapTags(
+		width,
+		height,
+		16,
+		BMATags_Displayable, TRUE,
+		BMATags_Friend, hidden->win->RPort->BitMap,
+		TAG_DONE)))
+	{
+		SDL_IGraphics->FreeBitMap(hidden->m_frontBuffer);
+		dprintf("Fatal error: Can't allocate memory for buffer bitmap\n");
+		SDL_Quit();
+		return SDL_FALSE;
+	}
+	
+	hidden->IGL->MGLUpdateContextTags(
+					MGLCC_FrontBuffer,hidden->m_frontBuffer,
+					MGLCC_BackBuffer,hidden->m_backBuffer,
+					TAG_DONE);
+
+	hidden->IGL->GLViewport(0,0,width,height);
+	
+	return SDL_TRUE;
+}
+
 SDL_Surface *
 os4video_SetVideoMode(_THIS, SDL_Surface *current, int width, int height, int bpp, Uint32 flags)
 {
@@ -1411,37 +1470,10 @@ os4video_SetVideoMode(_THIS, SDL_Surface *current, int width, int height, int bp
 		if ((current->flags & SDL_OPENGL) == SDL_OPENGL)
 		{
 			/* Dimensions changed reallocate and update bitmaps. */
-			if(hidden->m_frontBuffer)
+			if (!os4_video_AllocateOpenGLBuffers(_this, width, height))
 			{
-				SDL_IP96->p96FreeBitMap(hidden->m_frontBuffer);
-				hidden->m_frontBuffer = NULL;
-			}
-			if(hidden->m_backBuffer)
-			{
-				SDL_IP96->p96FreeBitMap(hidden->m_backBuffer);
-				hidden->m_backBuffer = NULL;
-			}
-
-			if(!(hidden->m_frontBuffer = SDL_IP96->p96AllocBitMap(width,height,16,BMF_MINPLANES | BMF_DISPLAYABLE,hidden->win->RPort->BitMap,0)))
-			{
-				dprintf("Fatal error: Can't allocate memory for buffer bitmap\n");
-				SDL_Quit();
 				return NULL;
 			}
-
-			if(!(hidden->m_backBuffer = SDL_IP96->p96AllocBitMap(width,height,16,BMF_MINPLANES | BMF_DISPLAYABLE,hidden->win->RPort->BitMap,0)))
-			{
-				SDL_IP96->p96FreeBitMap(hidden->m_frontBuffer);
-				dprintf("Fatal error: Can't allocate memory for buffer bitmap\n");
-				SDL_Quit();
-				return NULL;
-			}
-			hidden->IGL->MGLUpdateContextTags(
-							MGLCC_FrontBuffer,hidden->m_frontBuffer,
-							MGLCC_BackBuffer,hidden->m_backBuffer,
-							TAG_DONE);
-
-	        hidden->IGL->GLViewport(0,0,width,height);
 		}
 #endif
 
@@ -1635,38 +1667,10 @@ int os4video_ToggleFullScreen(_THIS, int on)
 		if (oldFlags & SDL_OPENGL)
 		{
 			/* Dimensions changed reallocate and update bitmaps. */
-			if(hidden->m_frontBuffer)
+			if (!os4video_AllocateOpenGLBuffers(_this, w, h))
 			{
-				SDL_IP96->p96FreeBitMap(hidden->m_frontBuffer);
-				hidden->m_frontBuffer = NULL;
-			}
-			if(hidden->m_backBuffer)
-			{
-				SDL_IP96->p96FreeBitMap(hidden->m_backBuffer);
-				hidden->m_backBuffer = NULL;
-			}
-
-			if(!(hidden->m_frontBuffer = SDL_IP96->p96AllocBitMap(w,h,16,BMF_MINPLANES | BMF_DISPLAYABLE,hidden->win->RPort->BitMap,0)))
-			{
-				dprintf("Fatal error: Can't allocate memory for buffer bitmap\n");
-				SDL_Quit();
 				return -1;
 			}
-
-			if(!(hidden->m_backBuffer = SDL_IP96->p96AllocBitMap(w,h,16,BMF_MINPLANES | BMF_DISPLAYABLE,hidden->win->RPort->BitMap,0)))
-			{
-				SDL_IP96->p96FreeBitMap(hidden->m_frontBuffer);
-				dprintf("Fatal error: Can't allocate memory for buffer bitmap\n");
-				SDL_Quit();
-				return -1;
-			}
-
-			hidden->IGL->MGLUpdateContextTags(
-                                     MGLCC_FrontBuffer,		hidden->m_frontBuffer,
-                                     MGLCC_BackBuffer,		hidden->m_backBuffer,
-							TAG_DONE);
-
-	        hidden->IGL->GLViewport(0,0,w,h);
 		}
 #endif
 
@@ -1697,37 +1701,10 @@ int os4video_ToggleFullScreen(_THIS, int on)
 		if (oldFlags & SDL_OPENGL)
 		{
 			/* Dimensions changed reallocate and update bitmaps. */
-			if(hidden->m_frontBuffer)
+			if (!os4video_AllocateOpenGLBuffers(_this, w, h))
 			{
-				SDL_IP96->p96FreeBitMap(hidden->m_frontBuffer);
-				hidden->m_frontBuffer = NULL;
-			}
-			if(hidden->m_backBuffer)
-			{
-				SDL_IP96->p96FreeBitMap(hidden->m_backBuffer);
-				hidden->m_backBuffer = NULL;
-			}
-
-			if(!(hidden->m_frontBuffer = SDL_IP96->p96AllocBitMap(w,h,16,BMF_MINPLANES | BMF_DISPLAYABLE,hidden->win->RPort->BitMap,0)))
-			{
-				dprintf("Fatal error: Can't allocate memory for buffer bitmap\n");
-				SDL_Quit();
 				return -1;
 			}
-
-			if(!(hidden->m_backBuffer = SDL_IP96->p96AllocBitMap(w,h,16,BMF_MINPLANES | BMF_DISPLAYABLE,hidden->win->RPort->BitMap,0)))
-			{
-				SDL_IP96->p96FreeBitMap(hidden->m_frontBuffer);
-				dprintf("Fatal error: Can't allocate memory for buffer bitmap\n");
-				SDL_Quit();
-				return -1;
-			}
-			hidden->IGL->MGLUpdateContextTags(
-							MGLCC_FrontBuffer,hidden->m_frontBuffer,
-							MGLCC_BackBuffer,hidden->m_backBuffer,
-							TAG_DONE);
-
-	        hidden->IGL->GLViewport(0,0,w,h);
 		}
 #endif
 
