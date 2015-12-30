@@ -546,7 +546,15 @@ int main(int argc, char* argv[])
 			printf("...Running test #%d...\n", t);
 		
 			setMode(tests[t]);
-			test(tests[t].depth / 8, MIN(tests[t].iterations, iterations), sleep);
+
+			if (view)
+			{
+				test(tests[t].depth / 8, MIN(tests[t].iterations, iterations), sleep);
+			}
+			else
+			{
+				printf("Failed to open screen\n");
+			}
 		}
 	}
 
