@@ -1470,7 +1470,7 @@ os4video_SetVideoMode(_THIS, SDL_Surface *current, int width, int height, int bp
 		if ((current->flags & SDL_OPENGL) == SDL_OPENGL)
 		{
 			/* Dimensions changed reallocate and update bitmaps. */
-			if (!os4_video_AllocateOpenGLBuffers(_this, width, height))
+			if (!os4video_AllocateOpenGLBuffers(_this, width, height))
 			{
 				return NULL;
 			}
