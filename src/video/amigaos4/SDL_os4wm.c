@@ -152,7 +152,7 @@ os4video_CreateWMCursor(_THIS, Uint8 *data, Uint8 *mask,
 	cursor->YOffset = -hot_y;
 
 	/* Create image data */
-	cursor->Image = IExec->AllocVecTags(4*h+4, AVT_ClearWithValue, 0, AVT_Type, MEMF_SHARED, TAG_DONE );
+	cursor->Image = IExec->AllocVecTags(4 * (h + 2), AVT_ClearWithValue, 0, AVT_Type, MEMF_SHARED, TAG_DONE);
 	if (!cursor->Image)
 	{
 		dprintf("No memory for image\n");
@@ -208,7 +208,7 @@ void os4video_ResetCursor(struct SDL_PrivateVideoData *hidden)
 
 	if (cursor)
 	{
-		SDL_IIntuition->SetPointer(hidden->win, cursor->Image, cursor->Width, cursor->Height,
+		SDL_IIntuition->SetPointer(hidden->win, cursor->Image, cursor->Height, cursor->Width,
 							   cursor->XOffset, cursor->YOffset);
 
 		dprintf("Cursor image set\n");
