@@ -103,15 +103,14 @@ int main(int argc, char *argv[])
 
 	/* Let the audio run */
 	printf("Using audio driver: %s\n", SDL_AudioDriverName(name, 32));
-	while ( ! done && (SDL_GetAudioStatus() == SDL_AUDIO_PLAYING) )
-#ifdef __amigaos4__	
-	{
-//		__check_abort();
-#endif		
+	while ( ! done && (SDL_GetAudioStatus() == SDL_AUDIO_PLAYING) ) {
+		static int counter = 0;
+		
 		SDL_Delay(1000);
-#ifdef __amigaos4__
+		if (++counter >= 10) {
+			done = 1;
+		}
 	}
-#endif			
 
 	/* Clean up on signal */
 	SDL_CloseAudio();
