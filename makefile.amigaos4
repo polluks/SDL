@@ -19,20 +19,17 @@ SHELL	= /bin/sh
 CC      = ppc-amigaos-gcc
 INCLUDE = -I./include
 CFLAGS  = -g -O2 -Wall
-#EXTRA_CFLAGS = -D_GNU_SOURCE=1 -DMINIGL -DPTHREAD_CANCEL_ASYNCHRONOUS=PTHREAD_CANCEL_ASYNCHRONOUS
 LDFLAGS = 
-EXTRA_LDFLAGS =  -lm -lGL -lGLU -lpthread
 AR	= ppc-amigaos-ar
 RANLIB	= ppc-amigaos-ranlib
 PIC_CFLAGS = -fPIC -DPIC
 
-
 ### Sources and objects files, build directories ###
 
-SOURCES = $(wildcard src/*.c src/audio/*.c src/cdrom/*.c src/cpuinfo/*.c src/events/*.c src/file/*.c src/stdlib/*.c src/thread/*.c src/timer/*.c src/video/*.c src/joystick/*.c src/video/dummy/*.c src/audio/disk/*.c src/audio/dummy/*.c src/video/amigaos4/*.c src/audio/amigaos4/*.c src/thread/generic/SDL_syssem.c src/thread/amigaos4/SDL_sysmutex.c src/thread/amigaos4/SDL_systhread.c src/thread/pthread/SDL_syscond.c src/timer/amigaos4/*.c src/main/amigaos4/SDL_os4timer.c src/joystick/amigaos4/*.c src/cdrom/amigaos4/*.c src/loadso/dummy/*.c)
-
-# Removed from the original list of sources : they don't compile
-#./src/thread/pthread/SDL_sysmutex.c ./src/thread/pthread/SDL_systhread.c 
+SOURCES = $(wildcard src/*.c src/audio/*.c src/cdrom/*.c src/cpuinfo/*.c src/events/*.c src/file/*.c src/stdlib/*.c  \
+	src/video/*.c src/joystick/*.c src/video/dummy/*.c src/audio/disk/*.c src/audio/dummy/*.c src/video/amigaos4/*.c src/audio/amigaos4/*.c \
+	src/thread/*.c src/timer/*.c src/thread/amigaos4/*.c src/thread/generic/SDL_syscond.c \
+	src/timer/amigaos4/*.c src/main/amigaos4/SDL_os4timer.c src/joystick/amigaos4/*.c src/cdrom/amigaos4/*.c src/loadso/dummy/*.c)
 
 TESTS_SOURCES = $(wildcard test/*.c)
 
@@ -59,7 +56,7 @@ $(STATIC_OBJDIR)/%.o: %.c
 $(STATIC_OBJDIR)/test/%: $(STATIC_OBJDIR)/test/%.o
 	@echo Link test $@
 	@mkdir -p $(dir $@)
-	$(CC) -L./$(STATIC_OBJDIR) -o $@ $< -lSDL -lpthread
+	$(CC) -L./$(STATIC_OBJDIR) -o $@ $< -lSDL
 
 $(SHARED_OBJDIR)/%.o: %.c
 	@mkdir -p $(dir $@)
@@ -68,7 +65,7 @@ $(SHARED_OBJDIR)/%.o: %.c
 $(SHARED_OBJDIR)/test/%: $(SHARED_OBJDIR)/test/%.o
 	@echo Link test $@
 	@mkdir -p $(dir $@)
-	$(CC) -o $@ $< -use-dynld -lSDL -lpthread
+	$(CC) -o $@ $< -use-dynld -lSDL
 
 ### Targets ###
 
@@ -81,7 +78,7 @@ $(STATIC_OBJDIR)/libSDL.a: $(STATIC_OBJS)
 	ls -l $@
 
 $(SHARED_OBJDIR)/libSDL-1.2.so: $(SHARED_OBJS)
-	$(CC) -shared -Wl,-soname,libSDL-1.2.so -o $@ $^ -lpthread
+	$(CC) -shared -Wl,-soname,libSDL-1.2.so -o $@ $^ 
 
 $(STATIC_TESTS_OBJDIR): $(STATIC_TESTS)
 	cp test/icon.bmp $(STATIC_OBJDIR)/test/
