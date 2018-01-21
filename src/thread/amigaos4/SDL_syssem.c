@@ -37,9 +37,13 @@
 
 #include "SDL_systhread_c.h"
 
+#include "../../main/amigaos4/SDL_os4timer_c.h"
+
 //#define DEBUG
 #include "../../main/amigaos4/SDL_os4debug.h"
 
+extern os4timer_Instance *os4thread_GetTimer(void);
+extern Uint32 SDL_GetTicks(void);
 
 struct SDL_semaphore
 {
