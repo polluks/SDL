@@ -58,10 +58,7 @@ struct TimeVal os4timer_starttime;
  */
 struct TimerIFace *ITimer = 0;
 
-void _INIT_os4timer_startup(void)  __attribute__((constructor));
-void _EXIT_os4timer_shutdown(void) __attribute__((destructor));
-
-void _INIT_os4timer_startup(void)
+void os4timer_init(void)
 {
 	struct ExecBase *sysbase = (struct ExecBase*) IExec->Data.LibBase;
 
@@ -74,7 +71,7 @@ void _INIT_os4timer_startup(void)
 	ITimer->GetSysTime(&os4timer_starttime);
 }
 
-void _EXIT_os4timer_shutdown(void)
+void os4timer_quit(void)
 {
 	IExec->DropInterface((struct Interface *)ITimer);
 }
@@ -108,7 +105,7 @@ BOOL os4timer_Init(os4timer_Instance *timer)
 {
 	BOOL success = FALSE;
 
-	dprintf("Initializing timer for thread=%p.\n", IExec->FindTask(NULL));
+	dprintf("Initializing timer for thread %p\n", IExec->FindTask(NULL));
 
 	timer->timerport = IExec->AllocSysObject(ASOT_PORT, NULL);
 
@@ -136,7 +133,7 @@ BOOL os4timer_Init(os4timer_Instance *timer)
 		}
 	}
 
-	dprintf("%s\n", (success ? "Done.\n" : "Failed.\n"));
+	dprintf("%s\n", (success ? "Done" : "Failed"));
 
 	return success;
 }
@@ -146,7 +143,7 @@ BOOL os4timer_Init(os4timer_Instance *timer)
  */
 void os4timer_Destroy(os4timer_Instance *timer)
 {
-	dprintf("Freeing timer for thread:%p.\n", IExec->FindTask(NULL));
+	dprintf("Freeing timer for thread %p\n", IExec->FindTask(NULL));
 
 	if (timer->timerrequest)
 	{

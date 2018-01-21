@@ -42,8 +42,8 @@
 #include <exec/ports.h>
 #include <devices/timer.h>
 
-struct PList currentThreads;
-struct PList currentJoins;
+static struct PList currentThreads;
+static struct PList currentJoins;
 
 struct ThreadNode
 {
@@ -53,7 +53,7 @@ struct ThreadNode
 	uint32              env_vector;
 };
 
-struct ThreadNode PrimaryThread;
+static struct ThreadNode PrimaryThread;
 
 struct JoinNode
 {
@@ -61,11 +61,8 @@ struct JoinNode
 	struct Task *sigTask;
 };
 
-void _INIT_thread_init(void) __attribute__((constructor));
-void _EXIT_thread_term(void) __attribute__((destructor));
 
-
-void plistInit(struct PList *list)
+static void plistInit(struct PList *list)
 {
 	if (list)
 	{
@@ -74,7 +71,7 @@ void plistInit(struct PList *list)
 	}
 }
 
-void plistTerm(struct PList *list)
+static void plistTerm(struct PList *list)
 {
 	if (list)
 	{
@@ -82,21 +79,21 @@ void plistTerm(struct PList *list)
 	}
 }
 
-void plistAdd(struct PList *list, struct Node *node)
+static void plistAdd(struct PList *list, struct Node *node)
 {
 	IExec->ObtainSemaphore(list->sem);
 	IExec->AddHead(&list->list, node);
 	IExec->ReleaseSemaphore(list->sem);
 }
 
-void plistRemove(struct PList *list, struct Node *node)
+static void plistRemove(struct PList *list, struct Node *node)
 {
 	IExec->ObtainSemaphore(list->sem);
 	IExec->Remove(node);
 	IExec->ReleaseSemaphore(list->sem);
 }
 
-struct Node *plistForEach(struct PList *list, plistForEachFn hook, struct Node *ref)
+static struct Node *plistForEach(struct PList *list, plistForEachFn hook, struct Node *ref)
 {
 	struct Node *node;
 	struct Node *found = 0;
@@ -119,18 +116,7 @@ struct Node *plistForEach(struct PList *list, plistForEachFn hook, struct Node *
 	return found;
 }
 
-struct Node *plistRemHead(struct PList *list)
-{
-	struct Node *node = 0;
-
-	IExec->ObtainSemaphore(list->sem);
-	node = IExec->RemHead(&list->list);
-	IExec->ReleaseSemaphore(list->sem);
-
-	return node;
-}
-
-int plistIsListEmpty(struct PList *list)
+static int plistIsListEmpty(struct PList *list)
 {
 	int empty = 0;
 
@@ -158,7 +144,7 @@ static inline __attribute__((always_inline)) void set_r2(uint32 r2)
 	__asm volatile ("mr 2, %0" :: "r" (r2));
 }
 
-void _INIT_thread_init(void)
+void os4thread_init(void)
 {
 	struct Process *me = (struct Process *)IExec->FindTask(0);
 
@@ -183,7 +169,7 @@ int kill_thread(struct ThreadNode *node, struct ThreadNode *ref)
 }
 
 
-void _EXIT_thread_term(void)
+void os4thread_quit(void)
 {
 	dprintf("Killing all remaining threads\n");
 
@@ -251,7 +237,7 @@ static void ExitThread(LONG retVal, LONG finalCode)
 	struct Process    *me       = (struct Process *)IExec->FindTask(0);
 	struct ThreadNode *myThread = me->pr_Task.tc_UserData;
 
-	dprintf("Exitting process=%p (SDL thread=%p) with return value=%d\n", me, myThread, retVal);
+	dprintf("Exiting process=%p (SDL thread=%p) with return value=%d\n", me, myThread, retVal);
 
 	/* Remove ourself from the internal list. */
 	plistRemove(&currentThreads, (struct Node *)myThread);
@@ -337,7 +323,7 @@ Uint32 SDL_ThreadID(void)
 }
 
 
-int threadCmp(struct ThreadNode *node, struct ThreadNode *ref)
+static int threadCmp(struct ThreadNode *node, struct ThreadNode *ref)
 {
 	if (node->thread == ref->thread)
 		return 1;

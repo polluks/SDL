@@ -55,14 +55,10 @@ struct WMcursor
 	int16 YOffset;
 };
 
-struct IOStdReq  *inputReq = 0;
-struct MsgPort   *inputPort = 0;
+static struct IOStdReq  *inputReq = 0;
+static struct MsgPort   *inputPort = 0;
 
-
-void _INIT_CreateInput(void) __attribute__((constructor));
-void _EXIT_DeleteInput(void) __attribute__((destructor));
-
-void _INIT_CreateInput(void)
+void os4video_init(void)
 {
 	inputPort = IExec->AllocSysObjectTags(ASOT_PORT, TAG_DONE);
 	if (inputPort)
@@ -86,7 +82,7 @@ void _INIT_CreateInput(void)
 	IExec->FreeSysObject(ASOT_PORT, inputPort);
 }
 
-void _EXIT_DeleteInput(void)
+void os4video_quit(void)
 {
 	if (inputReq)
 	{
