@@ -21,6 +21,10 @@
 */
 #include "SDL_config.h"
 
+#ifdef __amigaos4__
+#undef HAVE_ICONV
+#endif
+
 /* This file contains portable iconv functions for SDL */
 
 #include "SDL_stdinc.h"
