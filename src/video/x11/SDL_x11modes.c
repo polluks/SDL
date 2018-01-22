@@ -1,6 +1,6 @@
 /*
     SDL - Simple DirectMedia Layer
-    Copyright (C) 1997-2006 Sam Lantinga
+    Copyright (C) 1997-2012 Sam Lantinga
 
     This library is free software; you can redistribute it and/or
     modify it under the terms of the GNU Lesser General Public
@@ -52,8 +52,25 @@ static int cmpmodelist(const void *va, const void *vb)
 #if SDL_VIDEO_DRIVER_X11_VIDMODE
 Bool SDL_NAME(XF86VidModeGetModeInfo)(Display *dpy, int scr, SDL_NAME(XF86VidModeModeInfo) *info)
 {
-    SDL_NAME(XF86VidModeModeLine) *l = (SDL_NAME(XF86VidModeModeLine)*)((char*)info + sizeof info->dotclock);
-    return SDL_NAME(XF86VidModeGetModeLine)(dpy, scr, (int*)&info->dotclock, l);
+    Bool retval;
+    int dotclock;
+    SDL_NAME(XF86VidModeModeLine) l;
+    SDL_memset(&l, 0, sizeof(l));
+    retval = SDL_NAME(XF86VidModeGetModeLine)(dpy, scr, &dotclock, &l);
+    info->dotclock = dotclock;
+    info->hdisplay = l.hdisplay;
+    info->hsyncstart = l.hsyncstart;
+    info->hsyncend = l.hsyncend;
+    info->htotal = l.htotal;
+    info->hskew = l.hskew;
+    info->vdisplay = l.vdisplay;
+    info->vsyncstart = l.vsyncstart;
+    info->vsyncend = l.vsyncend;
+    info->vtotal = l.vtotal;
+    info->flags = l.flags;
+    info->privsize = l.privsize;
+    info->private = l.private;
+    return retval;
 }
 #endif /* SDL_VIDEO_DRIVER_X11_VIDMODE */
 
@@ -321,6 +338,18 @@ static void move_cursor_to(_THIS, int x, int y)
     XWarpPointer(SDL_Display, None, SDL_Root, 0, 0, 0, 0, x, y);
 }
 
+static int add_default_visual(_THIS)
+{
+    int i;
+    int n = this->hidden->nvisuals;
+    for (i=0; i<n; i++) {
+        if (this->hidden->visuals[i].visual == DefaultVisual(SDL_Display, SDL_Screen)) return n;
+    }
+    this->hidden->visuals[n].depth = DefaultDepth(SDL_Display, SDL_Screen);;
+    this->hidden->visuals[n].visual = DefaultVisual(SDL_Display, SDL_Screen);;
+    this->hidden->nvisuals++;
+    return(this->hidden->nvisuals);
+}
 static int add_visual(_THIS, int depth, int class)
 {
     XVisualInfo vi;
@@ -431,10 +460,13 @@ static int CheckVidMode(_THIS, int *major, int *minor)
 
         metro_fp = fopen("/usr/X11R6/lib/X11/Metro/.version", "r");
         if ( metro_fp != NULL ) {
-            int major, minor, patch, version;
+            int major, minor, patch, version, scannum;
             major = 0; minor = 0; patch = 0;
-            fscanf(metro_fp, "%d.%d.%d", &major, &minor, &patch);
+            scannum = fscanf(metro_fp, "%d.%d.%d", &major, &minor, &patch);
             fclose(metro_fp);
+            if ( (scannum < 0) || (scannum > 3) ) {
+                return 0;  /* we need _something_ useful from fscanf(). */
+            }
             version = major*100+minor*10+patch;
             if ( version < 431 ) {
                 return 0;
@@ -509,12 +541,15 @@ int X11_GetVideoModes(_THIS)
     /* Query Xinerama extention */
     if ( CheckXinerama(this, &xinerama_major, &xinerama_minor) ) {
         /* Find out which screen is the desired one */
-        int desired = 0;
+        int desired = -1;
         int screens;
         int w, h;
         SDL_NAME(XineramaScreenInfo) *xinerama;
 
-        const char *variable = SDL_getenv("SDL_VIDEO_FULLSCREEN_HEAD");
+        const char *variable = SDL_getenv("SDL_VIDEO_FULLSCREEN_DISPLAY");
+	if ( !variable ) {
+        	variable = SDL_getenv("SDL_VIDEO_FULLSCREEN_HEAD");
+	}
         if ( variable ) {
                 desired = SDL_atoi(variable);
         }
@@ -630,7 +665,7 @@ int X11_GetVideoModes(_THIS)
     /* XVidMode */
     if ( !use_xrandr &&
 #if SDL_VIDEO_DRIVER_X11_XINERAMA
-         (!use_xinerama || xinerama_info.screen_number == 0) &&
+         (!use_xinerama || xinerama_info.screen_number == -1) &&
 #endif
          CheckVidMode(this, &vm_major, &vm_minor) &&
          SDL_NAME(XF86VidModeGetAllModeLines)(SDL_Display, SDL_Screen,&nmodes,&modes) )
@@ -784,6 +819,7 @@ int X11_GetVideoModes(_THIS)
                                 add_visual(this, depth_list[i], StaticColor);
                         }
                 }
+                add_default_visual(this);
         }
         if ( this->hidden->nvisuals == 0 ) {
             SDL_SetError("Found no sufficiently capable X11 visuals");
@@ -978,12 +1014,8 @@ int X11_EnterFullScreen(_THIS)
     screen_w = DisplayWidth(SDL_Display, SDL_Screen);
     screen_h = DisplayHeight(SDL_Display, SDL_Screen);
     get_real_resolution(this, &real_w, &real_h);
-    if ( window_w > real_w ) {
-        real_w = MAX(real_w, screen_w);
-    }
-    if ( window_h > real_h ) {
-        real_h = MAX(real_h, screen_h);
-    }
+    real_w = MAX(window_w, MAX(real_w, screen_w));
+    real_h = MAX(window_h, MAX(real_h, screen_h));
     XMoveResizeWindow(SDL_Display, FSwindow,
                       x, y, real_w, real_h);
     XMapRaised(SDL_Display, FSwindow);
@@ -1017,6 +1049,7 @@ int X11_EnterFullScreen(_THIS)
     /* Save the current video mode */
     if ( use_vidmode ) {
         SDL_NAME(XF86VidModeLockModeSwitch)(SDL_Display, SDL_Screen, True);
+        save_mode(this);
     }
 #endif
     currently_fullscreen = 1;

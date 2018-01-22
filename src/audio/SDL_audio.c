@@ -1,6 +1,6 @@
 /*
     SDL - Simple DirectMedia Layer
-    Copyright (C) 1997-2006 Sam Lantinga
+    Copyright (C) 1997-2012 Sam Lantinga
 
     This library is free software; you can redistribute it and/or
     modify it under the terms of the GNU Lesser General Public
@@ -36,18 +36,18 @@
 
 /* Available audio drivers */
 static AudioBootStrap *bootstrap[] = {
+#if SDL_AUDIO_DRIVER_PULSE
+	&PULSE_bootstrap,
+#endif
+#if SDL_AUDIO_DRIVER_ALSA
+	&ALSA_bootstrap,
+#endif
 #if SDL_AUDIO_DRIVER_BSD
 	&BSD_AUDIO_bootstrap,
 #endif
 #if SDL_AUDIO_DRIVER_OSS
 	&DSP_bootstrap,
 	&DMA_bootstrap,
-#endif
-#if SDL_AUDIO_DRIVER_ALSA
-	&ALSA_bootstrap,
-#endif
-#if SDL_AUDIO_DRIVER_PULSE
-	&PULSE_bootstrap,
 #endif
 #if SDL_AUDIO_DRIVER_QNXNTO
 	&QNXNTOAUDIO_bootstrap,
@@ -117,8 +117,8 @@ static AudioBootStrap *bootstrap[] = {
 	&EPOCAudio_bootstrap,
 #endif     
 #if SDL_AUDIO_DRIVER_AMIGAOS4
-        &AmigaOS4_bootstrap,
-#endif     
+	&AmigaOS4_bootstrap,
+#endif
 	NULL
 };
 SDL_AudioDevice *current_audio = NULL;
@@ -538,7 +538,7 @@ int SDL_OpenAudio(SDL_AudioSpec *desired, SDL_AudioSpec *obtained)
 			return(-1);
 		}
 		if ( audio->convert.needed ) {
-			audio->convert.len = (int) ( ((double) desired->size) /
+			audio->convert.len = (int) ( ((double) audio->spec.size) /
                                           audio->convert.len_ratio );
 			audio->convert.buf =(Uint8 *)SDL_AllocAudioMem(
 			   audio->convert.len*audio->convert.len_mult);
@@ -699,3 +699,11 @@ void SDL_CalculateAudioSpec(SDL_AudioSpec *spec)
 	spec->size *= spec->channels;
 	spec->size *= spec->samples;
 }
+
+void SDL_Audio_SetCaption(const char *caption)
+{
+	if ((current_audio) && (current_audio->SetCaption)) {
+		current_audio->SetCaption(current_audio, caption);
+	}
+}
+

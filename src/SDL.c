@@ -1,6 +1,6 @@
 /*
     SDL - Simple DirectMedia Layer
-    Copyright (C) 1997-2006 Sam Lantinga
+    Copyright (C) 1997-2012 Sam Lantinga
 
     This library is free software; you can redistribute it and/or
     modify it under the terms of the GNU Lesser General Public
@@ -49,11 +49,11 @@ extern void SDL_TimerQuit(void);
 #endif
 
 /* The current SDL version */
-static SDL_version version =
+static SDL_version version = 
 	{ SDL_MAJOR_VERSION, SDL_MINOR_VERSION, SDL_PATCHLEVEL };
 
 #ifdef __amigaos4__
-static const char __attribute((used)) amiga_ver[] = "$VER: SDL1_2_13 1.4 (21.01.2018)\0";
+static const char __attribute((used)) amiga_ver[] = "$VER: SDL1_2_15 1.4 (22.01.2018)\0";
 #endif
 
 /* The initialized subsystems */
@@ -68,6 +68,25 @@ int surfaces_allocated = 0;
 
 int SDL_InitSubSystem(Uint32 flags)
 {
+#if !SDL_TIMERS_DISABLED
+	/* Initialize the timer subsystem */
+	if ( ! ticks_started ) {
+		SDL_StartTicks();
+		ticks_started = 1;
+	}
+	if ( (flags & SDL_INIT_TIMER) && !(SDL_initialized & SDL_INIT_TIMER) ) {
+		if ( SDL_TimerInit() < 0 ) {
+			return(-1);
+		}
+		SDL_initialized |= SDL_INIT_TIMER;
+	}
+#else
+	if ( flags & SDL_INIT_TIMER ) {
+		SDL_SetError("SDL not built with timer support");
+		return(-1);
+	}
+#endif
+
 #if !SDL_VIDEO_DISABLED
 	/* Initialize the video/event subsystem */
 	if ( (flags & SDL_INIT_VIDEO) && !(SDL_initialized & SDL_INIT_VIDEO) ) {
@@ -95,25 +114,6 @@ int SDL_InitSubSystem(Uint32 flags)
 #else
 	if ( flags & SDL_INIT_AUDIO ) {
 		SDL_SetError("SDL not built with audio support");
-		return(-1);
-	}
-#endif
-
-#if !SDL_TIMERS_DISABLED
-	/* Initialize the timer subsystem */
-	if ( ! ticks_started ) {
-		SDL_StartTicks();
-		ticks_started = 1;
-	}
-	if ( (flags & SDL_INIT_TIMER) && !(SDL_initialized & SDL_INIT_TIMER) ) {
-		if ( SDL_TimerInit() < 0 ) {
-			return(-1);
-		}
-		SDL_initialized |= SDL_INIT_TIMER;
-	}
-#else
-	if ( flags & SDL_INIT_TIMER ) {
-		SDL_SetError("SDL not built with timer support");
 		return(-1);
 	}
 #endif
@@ -220,12 +220,6 @@ void SDL_QuitSubSystem(Uint32 flags)
 		SDL_initialized &= ~SDL_INIT_JOYSTICK;
 	}
 #endif
-#if !SDL_TIMERS_DISABLED
-	if ( (flags & SDL_initialized & SDL_INIT_TIMER) ) {
-		SDL_TimerQuit();
-		SDL_initialized &= ~SDL_INIT_TIMER;
-	}
-#endif
 #if !SDL_AUDIO_DISABLED
 	if ( (flags & SDL_initialized & SDL_INIT_AUDIO) ) {
 		SDL_AudioQuit();
@@ -236,6 +230,12 @@ void SDL_QuitSubSystem(Uint32 flags)
 	if ( (flags & SDL_initialized & SDL_INIT_VIDEO) ) {
 		SDL_VideoQuit();
 		SDL_initialized &= ~SDL_INIT_VIDEO;
+	}
+#endif
+#if !SDL_TIMERS_DISABLED
+	if ( (flags & SDL_initialized & SDL_INIT_TIMER) ) {
+		SDL_TimerQuit();
+		SDL_initialized &= ~SDL_INIT_TIMER;
 	}
 #endif
 }
@@ -263,7 +263,7 @@ void SDL_Quit(void)
 
 	/* Print the number of surfaces not freed */
 	if ( surfaces_allocated != 0 ) {
-		fprintf(stderr, "SDL Warning: %d SDL surfaces extant\n",
+		fprintf(stderr, "SDL Warning: %d SDL surfaces extant\n", 
 							surfaces_allocated);
 	}
 #endif
@@ -370,8 +370,8 @@ unsigned _System LibMain(unsigned hmod, unsigned termination)
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
-BOOL APIENTRY _DllMainCRTStartup( HANDLE hModule,
-                       DWORD  ul_reason_for_call,
+BOOL APIENTRY _DllMainCRTStartup( HANDLE hModule, 
+                       DWORD  ul_reason_for_call, 
                        LPVOID lpReserved )
 {
 	switch (ul_reason_for_call) {

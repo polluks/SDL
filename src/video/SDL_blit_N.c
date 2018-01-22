@@ -1,6 +1,6 @@
 /*
     SDL - Simple DirectMedia Layer
-    Copyright (C) 1997-2006 Sam Lantinga
+    Copyright (C) 1997-2012 Sam Lantinga
 
     This library is free software; you can redistribute it and/or
     modify it under the terms of the GNU Lesser General Public
@@ -810,14 +810,9 @@ static void ConvertAltivec32to32_prefetch(SDL_BlitInfo *info)
     vec_dss(DST_CHAN_DEST);
 }
 
-static Uint32 GetBlitFeatures(SDL_Surface *surface)
+static Uint32 GetBlitFeatures( void )
 {
-    static SDL_Surface *last_surface = 0;
     static Uint32 features = 0xffffffff;
-    if (surface != last_surface) {
-        last_surface = surface;
-        features = 0xffffffff;
-    }
     if (features == 0xffffffff) {
         /* Provide an override for testing .. */
         char *override = SDL_getenv("SDL_ALTIVEC_BLIT_FEATURES");
@@ -829,7 +824,7 @@ static Uint32 GetBlitFeatures(SDL_Surface *surface)
                 /* Feature 1 is has-MMX */
                 | ((SDL_HasMMX()) ? 1 : 0)
                 /* Feature 2 is has-AltiVec */
-                | ((SDL_HasAltiVec() && !(surface->map->dst->flags & SDL_HWSURFACE)) ? 2 : 0)
+                | ((SDL_HasAltiVec()) ? 2 : 0)
                 /* Feature 4 is dont-use-prefetch */
                 /* !!!! FIXME: Check for G5 or later, not the cache size! Always prefetch on a G4. */
                 | ((GetL3CacheSize() == 0) ? 4 : 0)
@@ -843,7 +838,7 @@ static Uint32 GetBlitFeatures(SDL_Surface *surface)
 #endif
 #else
 /* Feature 1 is has-MMX */
-#define GetBlitFeatures(x) ((Uint32)(SDL_HasMMX() ? 1 : 0))
+#define GetBlitFeatures() ((Uint32)(SDL_HasMMX() ? 1 : 0))
 #endif
 
 /* This is now endian dependent */
@@ -2338,6 +2333,8 @@ static const struct blit_table normal_blit_4[] = {
     { 0x00FF0000,0x0000FF00,0x000000FF, 2, 0x0000001F,0x000003E0,0x00007C00,
       0, ConvertX86p32_16BGR555, ConvertX86, NO_ALPHA },
     { 0x00FF0000,0x0000FF00,0x000000FF, 3, 0x00FF0000,0x0000FF00,0x000000FF,
+      1, ConvertMMXpII32_24RGB888, ConvertMMX, NO_ALPHA },
+    { 0x00FF0000,0x0000FF00,0x000000FF, 3, 0x00FF0000,0x0000FF00,0x000000FF,
       0, ConvertX86p32_24RGB888, ConvertX86, NO_ALPHA },
     { 0x00FF0000,0x0000FF00,0x000000FF, 3, 0x000000FF,0x0000FF00,0x00FF0000,
       0, ConvertX86p32_24BGR888, ConvertX86, NO_ALPHA },
@@ -2409,9 +2406,8 @@ SDL_loblit SDL_CalculateBlitN(SDL_Surface *surface, int blit_index)
 	    else if(dstfmt->BytesPerPixel == 1)
 		return BlitNto1Key;
 	    else {
-#ifdef USE_ALTIVEC_BLITTERS
-	if((srcfmt->BytesPerPixel == 4) && (dstfmt->BytesPerPixel == 4) &&
-	    !(surface->map->dst->flags & SDL_HWSURFACE) && SDL_HasAltiVec()) {
+#if SDL_ALTIVEC_BLITTERS
+        if((srcfmt->BytesPerPixel == 4) && (dstfmt->BytesPerPixel == 4) && SDL_HasAltiVec()) {
             return Blit32to32KeyAltivec;
         } else
 #endif
@@ -2458,7 +2454,7 @@ SDL_loblit SDL_CalculateBlitN(SDL_Surface *surface, int blit_index)
 			    MASKOK(dstfmt->Bmask, table[which].dstB) &&
 			    dstfmt->BytesPerPixel == table[which].dstbpp &&
 			    (a_need & table[which].alpha) == a_need &&
-			    ((table[which].blit_features & GetBlitFeatures(surface)) == table[which].blit_features) )
+			    ((table[which].blit_features & GetBlitFeatures()) == table[which].blit_features) )
 				break;
 		}
 		sdata->aux_data = table[which].aux_data;

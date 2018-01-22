@@ -1,6 +1,6 @@
 /*
     SDL - Simple DirectMedia Layer
-    Copyright (C) 1997-2006 Sam Lantinga
+    Copyright (C) 1997-2012 Sam Lantinga
 
     This library is free software; you can redistribute it and/or
     modify it under the terms of the GNU Lesser General Public
@@ -36,6 +36,7 @@ extern "C" {
 #include "../../events/SDL_sysevents.h"
 #include "../../events/SDL_events_c.h"
 #include "SDL_sysevents_c.h"
+#include "../SDL_cursor_c.h"
 
 void BE_PumpEvents(_THIS)
 {
@@ -203,11 +204,21 @@ void SDL_BWin::DispatchMessage(BMessage *msg, BHandler *target)
 				if (transit == B_EXITED_VIEW) {
 					if ( SDL_GetAppState() & SDL_APPMOUSEFOCUS ) {
 						SDL_PrivateAppActive(0, SDL_APPMOUSEFOCUS);
+#if SDL_VIDEO_OPENGL
+					// for some reason, SDL_EraseCursor fails for OpenGL
+					if (this->the_view != this->SDL_GLView)
+#endif
+							SDL_EraseCursor(SDL_VideoSurface);
 						be_app->SetCursor(B_HAND_CURSOR);
 					}
 				} else {
 					if ( !(SDL_GetAppState() & SDL_APPMOUSEFOCUS) ) {
 						SDL_PrivateAppActive(1, SDL_APPMOUSEFOCUS);
+#if SDL_VIDEO_OPENGL
+					// for some reason, SDL_EraseCursor fails for OpenGL
+					if (this->the_view != this->SDL_GLView)
+#endif
+							SDL_EraseCursor(SDL_VideoSurface);
 						SDL_SetCursor(NULL);
 					}
 
@@ -378,4 +389,27 @@ void SDL_BWin::DispatchMessage(BMessage *msg, BHandler *target)
 			break;
 	}
 	BDirectWindow::DispatchMessage(msg, target);
+}
+
+void SDL_BWin::DirectConnected(direct_buffer_info *info) {
+	switch (info->buffer_state & B_DIRECT_MODE_MASK) {
+		case B_DIRECT_START:
+		case B_DIRECT_MODIFY:
+			{
+				int32 width = info->window_bounds.right -
+					info->window_bounds.left;
+				int32 height = info->window_bounds.bottom -
+					info->window_bounds.top;
+				SDL_PrivateResize(width, height);
+				break;
+			}
+		default:
+			break;
+	}
+#if SDL_VIDEO_OPENGL
+	// If it is a BGLView, it is apparently required to
+	// call DirectConnected() on it as well
+	if (this->the_view == this->SDL_GLView)
+		this->SDL_GLView->DirectConnected(info);
+#endif	
 }

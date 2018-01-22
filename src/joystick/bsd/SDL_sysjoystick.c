@@ -1,6 +1,6 @@
 /*
     SDL - Simple DirectMedia Layer
-    Copyright (C) 1997-2006 Sam Lantinga
+    Copyright (C) 1997-2012 Sam Lantinga
 
     This library is free software; you can redistribute it and/or
     modify it under the terms of the GNU Lesser General Public
@@ -36,6 +36,10 @@
 #include <fcntl.h>
 #include <errno.h>
 
+#ifndef __FreeBSD_kernel_version
+#define __FreeBSD_kernel_version __FreeBSD_version
+#endif
+
 #if defined(HAVE_USB_H)
 #include <usb.h>
 #endif
@@ -55,9 +59,12 @@
 #include <libusbhid.h>
 #endif
 
-#ifdef __FREEBSD__
+#if defined(__FREEBSD__) || defined(__FreeBSD_kernel__)
 #ifndef __DragonFly__
 #include <osreldate.h>
+#endif
+#if __FreeBSD_kernel_version > 800063
+#include <dev/usb/usb_ioctl.h>
 #endif
 #include <sys/joystick.h>
 #endif
@@ -75,7 +82,11 @@
 #define MAX_JOYS	(MAX_UHID_JOYS + MAX_JOY_JOYS)
 
 struct report {
+#if defined(__FREEBSD__) && (__FreeBSD_kernel_version > 800063)
+	struct	usb_gen_descriptor *buf;	/* Buffer */
+#else
 	struct	usb_ctl_report *buf;	/* Buffer */
+#endif
 	size_t	size;			/* Buffer size */
 	int	rid;			/* Report ID */
 	enum {
@@ -137,8 +148,10 @@ static char *joydevnames[MAX_JOYS];
 static int	report_alloc(struct report *, struct report_desc *, int);
 static void	report_free(struct report *);
 
-#ifdef USBHID_UCR_DATA
+#if defined(USBHID_UCR_DATA) || defined(__FreeBSD_kernel__)
 #define REP_BUF_DATA(rep) ((rep)->buf->ucr_data)
+#elif (defined(__FREEBSD__) && (__FreeBSD_kernel_version > 800063))
+#define REP_BUF_DATA(rep) ((rep)->buf->ugd_data)
 #else
 #define REP_BUF_DATA(rep) ((rep)->buf->data)
 #endif
@@ -292,9 +305,13 @@ SDL_SYS_JoystickOpen(SDL_Joystick *joy)
 		    strerror(errno));
 		goto usberr;
 	}
-
 	rep = &hw->inreport;
+#if defined(__FREEBSD__) && (__FreeBSD_kernel_version > 800063) || defined(__FreeBSD_kernel__)
+       rep->rid = hid_get_report_id(fd);
+       if (rep->rid < 0) {
+#else
 	if (ioctl(fd, USB_GET_REPORT_ID, &rep->rid) < 0) {
+#endif
 		rep->rid = -1; /* XXX */
 	}
 	if (report_alloc(rep, hw->repdesc, REPORT_INPUT) < 0) {
@@ -306,7 +323,7 @@ SDL_SYS_JoystickOpen(SDL_Joystick *joy)
 		goto usberr;
 	}
 
-#if defined(USBHID_NEW) || (defined(__FREEBSD__) && __FreeBSD_version >= 500111)
+#if defined(USBHID_NEW) || (defined(__FREEBSD__) && __FreeBSD_kernel_version >= 500111) || defined(__FreeBSD_kernel__)
 	hdata = hid_start_parse(hw->repdesc, 1 << hid_input, rep->rid);
 #else
 	hdata = hid_start_parse(hw->repdesc, 1 << hid_input);
@@ -390,7 +407,7 @@ SDL_SYS_JoystickUpdate(SDL_Joystick *joy)
 	int nbutton, naxe = -1;
 	Sint32 v;
 
-#if defined(__FREEBSD__) || SDL_JOYSTICK_USBHID_MACHINE_JOYSTICK_H
+#if defined(__FREEBSD__) || SDL_JOYSTICK_USBHID_MACHINE_JOYSTICK_H || defined(__FreeBSD_kernel__)
 	struct joystick gameport;
  
 	if (joy->hwdata->type == BSDJOY_JOY) {
@@ -445,7 +462,7 @@ SDL_SYS_JoystickUpdate(SDL_Joystick *joy)
 	if (read(joy->hwdata->fd, REP_BUF_DATA(rep), rep->size) != rep->size) {
 		return;
 	}
-#if defined(USBHID_NEW) || (defined(__FREEBSD__) && __FreeBSD_version >= 500111)
+#if defined(USBHID_NEW) || (defined(__FREEBSD__) && __FreeBSD_kernel_version >= 500111) || defined(__FreeBSD_kernel__)
 	hdata = hid_start_parse(joy->hwdata->repdesc, 1 << hid_input, rep->rid);
 #else
 	hdata = hid_start_parse(joy->hwdata->repdesc, 1 << hid_input);
@@ -541,8 +558,8 @@ report_alloc(struct report *r, struct report_desc *rd, int repind)
 #ifdef __DragonFly__
 	len = hid_report_size(rd, r->rid, repinfo[repind].kind);
 #elif __FREEBSD__
-# if (__FreeBSD_version >= 460000)
-#  if (__FreeBSD_version <= 500111)
+# if (__FreeBSD_kernel_version >= 460000) || defined(__FreeBSD_kernel__)
+#  if (__FreeBSD_kernel_version <= 500111)
 	len = hid_report_size(rd, r->rid, repinfo[repind].kind);
 #  else
 	len = hid_report_size(rd, repinfo[repind].kind, r->rid);

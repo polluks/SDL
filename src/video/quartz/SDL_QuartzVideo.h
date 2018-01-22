@@ -1,6 +1,6 @@
 /*
     SDL - Simple DirectMedia Layer
-    Copyright (C) 1997-2003  Sam Lantinga
+    Copyright (C) 1997-2012  Sam Lantinga
 
     This library is free software; you can redistribute it and/or
     modify it under the terms of the GNU Library General Public
@@ -53,7 +53,6 @@
 
 #include <Cocoa/Cocoa.h>
 #include <Carbon/Carbon.h>
-#include <QuickTime/QuickTime.h>
 #include <OpenGL/OpenGL.h>	/* For CGL functions and types */
 #include <IOKit/IOKitLib.h>	/* For powersave handling */
 #include <pthread.h>
@@ -68,32 +67,41 @@
 #include "../SDL_pixels_c.h"
 #include "../../events/SDL_events_c.h"
 
+
+#ifdef __powerpc__
 /* 
     This is a workaround to directly access NSOpenGLContext's CGL context
     We need this to check for errors NSOpenGLContext doesn't support
+    Please note this is only used on PowerPC (Intel Macs are guaranteed to
+    have a better API for this, since it showed up in Mac OS X 10.3).
 */
 @interface NSOpenGLContext (CGLContextAccess)
 - (CGLContextObj) cglContext;
 @end
+#endif
+
+/* use this to get the CGLContext; it handles Cocoa interface changes. */
+CGLContextObj QZ_GetCGLContextObj(NSOpenGLContext *nsctx);
 
 
 /* Main driver structure to store required state information */
 typedef struct SDL_PrivateVideoData {
-
+    BOOL               use_new_mode_apis;  /* 1 == >= 10.6 APIs available */
     BOOL               allow_screensaver;  /* 0 == disable screensaver */
     CGDirectDisplayID  display;            /* 0 == main display (only support single display) */
-    CFDictionaryRef    mode;               /* current mode of the display */
-    CFDictionaryRef    save_mode;          /* original mode of the display */
-    CFArrayRef         mode_list;          /* list of available fullscreen modes */
+    const void         *mode;              /* current mode of the display */
+    const void         *save_mode;         /* original mode of the display */
     CGDirectPaletteRef palette;            /* palette of an 8-bit display */
     NSOpenGLContext    *gl_context;        /* OpenGL rendering context */
+    NSGraphicsContext  *nsgfx_context;     /* Cocoa graphics context */
     Uint32             width, height, bpp; /* frequently used data about the display */
     Uint32             flags;              /* flags for current mode, for teardown purposes */
     Uint32             video_set;          /* boolean; indicates if video was set correctly */
     Uint32             warp_flag;          /* boolean; notify to event loop that a warp just occured */
     Uint32             warp_ticks;         /* timestamp when the warp occured */
     NSWindow           *window;            /* Cocoa window to implement the SDL window */
-    NSQuickDrawView    *view;              /* the window's view; draw 2D and OpenGL into this view */
+    NSView             *view;              /* the window's view; draw 2D and OpenGL into this view */
+    CGContextRef       cg_context;         /* CoreGraphics rendering context */
     SDL_Surface        *resize_icon;       /* icon for the resize badge, we have to draw it by hand */
     SDL_GrabMode       current_grab_mode;  /* default value is SDL_GRAB_OFF */
     SDL_Rect           **client_mode_list; /* resolution list to pass back to client */
@@ -113,14 +121,6 @@ typedef struct SDL_PrivateVideoData {
     Uint8              *current_buffer;    /* the buffer being copied to the screen */
     BOOL               quit_thread;        /* used to quit the async blitting thread */
     SInt32             system_version;     /* used to dis-/enable workarounds depending on the system version */
-    
-    ImageDescriptionHandle yuv_idh;
-    MatrixRecordPtr        yuv_matrix;
-    DecompressorComponent  yuv_codec;
-    ImageSequence          yuv_seq;
-    PlanarPixmapInfoYUV420 *yuv_pixmap;
-    Sint16                  yuv_width, yuv_height;
-    CGrafPtr                yuv_port;
 
     void *opengl_library;    /* dynamically loaded OpenGL library. */
 } SDL_PrivateVideoData;
@@ -129,16 +129,18 @@ typedef struct SDL_PrivateVideoData {
 #define display_id (this->hidden->display)
 #define mode (this->hidden->mode)
 #define save_mode (this->hidden->save_mode)
+#define use_new_mode_apis (this->hidden->use_new_mode_apis)
 #define allow_screensaver (this->hidden->allow_screensaver)
-#define mode_list (this->hidden->mode_list)
 #define palette (this->hidden->palette)
 #define gl_context (this->hidden->gl_context)
+#define nsgfx_context (this->hidden->nsgfx_context)
 #define device_width (this->hidden->width)
 #define device_height (this->hidden->height)
 #define device_bpp (this->hidden->bpp)
 #define mode_flags (this->hidden->flags)
 #define qz_window (this->hidden->window)
 #define window_view (this->hidden->view)
+#define cg_context (this->hidden->cg_context)
 #define video_set (this->hidden->video_set)
 #define warp_ticks (this->hidden->warp_ticks)
 #define warp_flag (this->hidden->warp_flag)
@@ -156,6 +158,7 @@ typedef struct SDL_PrivateVideoData {
 #define cursor_should_be_visible (this->hidden->cursor_should_be_visible)
 #define cursor_visible (this->hidden->cursor_visible)
 #define sw_buffers (this->hidden->sw_buffers)
+#define sw_contexts (this->hidden->sw_contexts)
 #define thread (this->hidden->thread)
 #define sem1 (this->hidden->sem1)
 #define sem2 (this->hidden->sem2)
@@ -214,11 +217,6 @@ void         QZ_SetIcon          (_THIS, SDL_Surface *icon, Uint8 *mask);
 int          QZ_IconifyWindow    (_THIS);
 SDL_GrabMode QZ_GrabInput        (_THIS, SDL_GrabMode grab_mode);
 /*int          QZ_GetWMInfo        (_THIS, SDL_SysWMinfo *info);*/
-
-/* YUV functions */
-SDL_Overlay* QZ_CreateYUVOverlay (_THIS, int width, int height,
-                                         Uint32 format, SDL_Surface *display);
-
 
 /* Private functions (used internally) */
 void         QZ_PrivateWarpCursor (_THIS, int x, int y);

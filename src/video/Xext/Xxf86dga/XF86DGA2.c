@@ -17,7 +17,12 @@ Copyright (c) 1995,1996  The XFree86 Project, Inc
 #define NEED_EVENTS
 #define NEED_REPLIES
 
+/* Apparently some X11 systems can't include this multiple times... */
+#ifndef SDL_INCLUDED_XLIBINT_H
+#define SDL_INCLUDED_XLIBINT_H 1
 #include <X11/Xlibint.h>
+#endif
+
 #include "../extensions/xf86dga.h"
 #include "../extensions/xf86dgastr.h"
 #include "../extensions/Xext.h"
@@ -955,8 +960,8 @@ DGAMapPhysical(
 #else
 	return False;
 #endif
-    pMap->virtual = mmap(NULL, size, PROT_READ | PROT_WRITE, 
-			MAP_FILE | MAP_SHARED, pMap->fd, (off_t)base);
+    pMap->virtual = mmap(NULL, size, PROT_READ | PROT_WRITE,
+			MAP_FILE | MAP_SHARED, pMap->fd, (off_t)((size_t)base));
     if (pMap->virtual == (void *)-1)
 	return False;
 #endif

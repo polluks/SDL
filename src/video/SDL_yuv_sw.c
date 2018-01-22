@@ -1,6 +1,6 @@
 /*
     SDL - Simple DirectMedia Layer
-    Copyright (C) 1997-2006 Sam Lantinga
+    Copyright (C) 1997-2012 Sam Lantinga
 
     This library is free software; you can redistribute it and/or
     modify it under the terms of the GNU Lesser General Public
@@ -121,7 +121,7 @@ struct private_yuvhwdata {
 
 /* The colorspace conversion functions */
 
-#if 0 /*defined(__GNUC__) && defined(__i386__) && SDL_ASSEMBLY_ROUTINES*/
+#if (__GNUC__ > 2) && defined(__i386__) && __OPTIMIZE__ && SDL_ASSEMBLY_ROUTINES
 extern void Color565DitherYV12MMX1X( int *colortab, Uint32 *rgb_2_pix,
                                      unsigned char *lum, unsigned char *cr,
                                      unsigned char *cb, unsigned char *out,
@@ -1061,7 +1061,7 @@ SDL_Overlay *SDL_CreateYUV_SW(_THIS, int width, int height, Uint32 format, SDL_S
 	    case SDL_YV12_OVERLAY:
 	    case SDL_IYUV_OVERLAY:
 		if ( display->format->BytesPerPixel == 2 ) {
-#if 0 /*defined(__GNUC__) && defined(__i386__) && SDL_ASSEMBLY_ROUTINES*/
+#if (__GNUC__ > 2) && defined(__i386__) && __OPTIMIZE__ && SDL_ASSEMBLY_ROUTINES
 			/* inline assembly functions */
 			if ( SDL_HasMMX() && (Rmask == 0xF800) &&
 			                     (Gmask == 0x07E0) &&
@@ -1083,7 +1083,7 @@ SDL_Overlay *SDL_CreateYUV_SW(_THIS, int width, int height, Uint32 format, SDL_S
 			swdata->Display2X = Color24DitherYV12Mod2X;
 		}
 		if ( display->format->BytesPerPixel == 4 ) {
-#if 0 /*defined(__GNUC__) && defined(__i386__) && SDL_ASSEMBLY_ROUTINES*/
+#if (__GNUC__ > 2) && defined(__i386__) && __OPTIMIZE__ && SDL_ASSEMBLY_ROUTINES
 			/* inline assembly functions */
 			if ( SDL_HasMMX() && (Rmask == 0x00FF0000) &&
 			                     (Gmask == 0x0000FF00) &&
@@ -1294,5 +1294,6 @@ void SDL_FreeYUV_SW(_THIS, SDL_Overlay *overlay)
 			SDL_free(swdata->rgb_2_pix);
 		}
 		SDL_free(swdata);
+		overlay->hwdata = NULL;
 	}
 }

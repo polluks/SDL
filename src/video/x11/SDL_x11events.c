@@ -1,6 +1,6 @@
 /*
     SDL - Simple DirectMedia Layer
-    Copyright (C) 1997-2006 Sam Lantinga
+    Copyright (C) 1997-2012 Sam Lantinga
 
     This library is free software; you can redistribute it and/or
     modify it under the terms of the GNU Lesser General Public
@@ -57,6 +57,12 @@ static SDLKey ODD_keymap[256];
 static SDLKey MISC_keymap[256];
 SDLKey X11_TranslateKeycode(Display *display, KeyCode kc);
 
+/*
+ Pending resize target for ConfigureNotify (so outdated events don't
+ cause inappropriate resize events)
+*/
+int X11_PendingConfigureNotifyWidth = -1;
+int X11_PendingConfigureNotifyHeight = -1;
 
 #ifdef X_HAVE_UTF8_STRING
 Uint32 Utf8ToUcs4(const Uint8 *utf8)
@@ -423,15 +429,12 @@ printf("Mode: NotifyGrab\n");
 if ( xevent.xcrossing.mode == NotifyUngrab )
 printf("Mode: NotifyUngrab\n");
 #endif
-		if ( (xevent.xcrossing.mode != NotifyGrab) &&
-		     (xevent.xcrossing.mode != NotifyUngrab) ) {
-			if ( this->input_grab == SDL_GRAB_OFF ) {
-				posted = SDL_PrivateAppActive(1, SDL_APPMOUSEFOCUS);
-			}
-			posted = SDL_PrivateMouseMotion(0, 0,
-					xevent.xcrossing.x,
-					xevent.xcrossing.y);
+		if ( this->input_grab == SDL_GRAB_OFF ) {
+			posted = SDL_PrivateAppActive(1, SDL_APPMOUSEFOCUS);
 		}
+		posted = SDL_PrivateMouseMotion(0, 0,
+				xevent.xcrossing.x,
+				xevent.xcrossing.y);
 	    }
 	    break;
 
@@ -447,7 +450,7 @@ printf("Mode: NotifyUngrab\n");
 		if ( (xevent.xcrossing.mode != NotifyGrab) &&
 		     (xevent.xcrossing.mode != NotifyUngrab) &&
 		     (xevent.xcrossing.detail != NotifyInferior) ) {
-			if ( this->input_grab == SDL_GRAB_OFF ) {
+               		if ( this->input_grab == SDL_GRAB_OFF ) {
 				posted = SDL_PrivateAppActive(0, SDL_APPMOUSEFOCUS);
 			} else {
 				posted = SDL_PrivateMouseMotion(0, 0,
@@ -822,6 +825,16 @@ printf("MapNotify!\n");
 #ifdef DEBUG_XEVENTS
 printf("ConfigureNotify! (resize: %dx%d)\n", xevent.xconfigure.width, xevent.xconfigure.height);
 #endif
+		if ((X11_PendingConfigureNotifyWidth != -1) &&
+		    (X11_PendingConfigureNotifyHeight != -1)) {
+		    if ((xevent.xconfigure.width != X11_PendingConfigureNotifyWidth) &&
+			(xevent.xconfigure.height != X11_PendingConfigureNotifyHeight)) {
+			    /* Event is from before the resize, so ignore. */
+			    break;
+		    }
+		    X11_PendingConfigureNotifyWidth = -1;
+		    X11_PendingConfigureNotifyHeight = -1;
+		}
 		if ( SDL_VideoSurface ) {
 		    if ((xevent.xconfigure.width != SDL_VideoSurface->w) ||
 		        (xevent.xconfigure.height != SDL_VideoSurface->h)) {
@@ -919,6 +932,16 @@ int X11_Pending(Display *display)
 void X11_PumpEvents(_THIS)
 {
 	int pending;
+
+	/* Update activity every five seconds to prevent screensaver. --ryan. */
+	if (!allow_screensaver) {
+		static Uint32 screensaverTicks;
+		Uint32 nowTicks = SDL_GetTicks();
+		if ((nowTicks - screensaverTicks) > 5000) {
+			XResetScreenSaver(SDL_Display);
+			screensaverTicks = nowTicks;
+		}
+	}
 
 	/* Keep processing pending events */
 	pending = 0;
@@ -1389,67 +1412,3 @@ void X11_InitOSKeymap(_THIS)
 	X11_InitKeymap();
 }
 
-void X11_SaveScreenSaver(Display *display, int *saved_timeout, BOOL *dpms)
-{
-	int timeout, interval, prefer_blank, allow_exp;
-	XGetScreenSaver(display, &timeout, &interval, &prefer_blank, &allow_exp);
-	*saved_timeout = timeout;
-
-#if SDL_VIDEO_DRIVER_X11_DPMS
-	if ( SDL_X11_HAVE_DPMS ) {
-		int dummy;
-	  	if ( DPMSQueryExtension(display, &dummy, &dummy) ) {
-			CARD16 state;
-			DPMSInfo(display, &state, dpms);
-		}
-	}
-#else
-	*dpms = 0;
-#endif /* SDL_VIDEO_DRIVER_X11_DPMS */
-}
-
-void X11_DisableScreenSaver(_THIS, Display *display)
-{
-	int timeout, interval, prefer_blank, allow_exp;
-
-	if (this->hidden->allow_screensaver) {
-		return;
-	}
-
-	XGetScreenSaver(display, &timeout, &interval, &prefer_blank, &allow_exp);
-	timeout = 0;
-	XSetScreenSaver(display, timeout, interval, prefer_blank, allow_exp);
-
-#if SDL_VIDEO_DRIVER_X11_DPMS
-	if ( SDL_X11_HAVE_DPMS ) {
-		int dummy;
-	  	if ( DPMSQueryExtension(display, &dummy, &dummy) ) {
-			DPMSDisable(display);
-		}
-	}
-#endif /* SDL_VIDEO_DRIVER_X11_DPMS */
-}
-
-void X11_RestoreScreenSaver(_THIS, Display *display, int saved_timeout, BOOL dpms)
-{
-	int timeout, interval, prefer_blank, allow_exp;
-
-	if (this->hidden->allow_screensaver) {
-		return;
-	}
-
-	XGetScreenSaver(display, &timeout, &interval, &prefer_blank, &allow_exp);
-	timeout = saved_timeout;
-	XSetScreenSaver(display, timeout, interval, prefer_blank, allow_exp);
-
-#if SDL_VIDEO_DRIVER_X11_DPMS
-	if ( SDL_X11_HAVE_DPMS ) {
-		int dummy;
-	  	if ( DPMSQueryExtension(display, &dummy, &dummy) ) {
-			if ( dpms ) {
-				DPMSEnable(display);
-			}
-		}
-	}
-#endif /* SDL_VIDEO_DRIVER_X11_DPMS */
-}

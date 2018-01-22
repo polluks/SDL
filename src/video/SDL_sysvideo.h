@@ -1,6 +1,6 @@
 /*
     SDL - Simple DirectMedia Layer
-    Copyright (C) 1997-2006 Sam Lantinga
+    Copyright (C) 1997-2012 Sam Lantinga
 
     This library is free software; you can redistribute it and/or
     modify it under the terms of the GNU Lesser General Public
@@ -25,9 +25,9 @@
 #define _SDL_sysvideo_h
 
 #include "SDL_mouse.h"
-//#define SDL_PROTOTYPES_ONLY
+#define SDL_PROTOTYPES_ONLY
 #include "SDL_syswm.h"
-//#undef SDL_PROTOTYPES_ONLY
+#undef SDL_PROTOTYPES_ONLY
 
 /* This file prototypes the video driver implementation.
    This is designed to be easily converted to C++ in the future.
@@ -347,6 +347,9 @@ extern VideoBootStrap DirectFB_bootstrap;
 #if SDL_VIDEO_DRIVER_PS2GS
 extern VideoBootStrap PS2GS_bootstrap;
 #endif
+#if SDL_VIDEO_DRIVER_PS3
+extern VideoBootStrap PS3_bootstrap;
+#endif
 #if SDL_VIDEO_DRIVER_GGI
 extern VideoBootStrap GGI_bootstrap;
 #endif
@@ -409,6 +412,9 @@ extern VideoBootStrap os4video_bootstrap;
 #endif
 #if SDL_VIDEO_DRIVER_AALIB
 extern VideoBootStrap AALIB_bootstrap;
+#endif
+#if SDL_VIDEO_DRIVER_CACA
+extern VideoBootStrap CACA_bootstrap;
 #endif
 #if SDL_VIDEO_DRIVER_DUMMY
 extern VideoBootStrap DUMMY_bootstrap;

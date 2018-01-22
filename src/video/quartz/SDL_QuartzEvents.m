@@ -1,6 +1,6 @@
 /*
     SDL - Simple DirectMedia Layer
-    Copyright (C) 1997-2003  Sam Lantinga
+    Copyright (C) 1997-2012  Sam Lantinga
 
     This library is free software; you can redistribute it and/or
     modify it under the terms of the GNU Library General Public
@@ -27,6 +27,19 @@
 #include <IOKit/IOMessage.h> /* For wake from sleep detection */
 #include <IOKit/pwr_mgt/IOPMLib.h> /* For wake from sleep detection */
 #include "SDL_QuartzKeys.h"
+
+/*
+ * On Leopard, this is missing from the 64-bit headers
+ */
+#if defined(__LP64__) && !defined(__POWER__)
+/*
+ * Workaround for a bug in the 10.5 SDK: By accident, OSService.h does
+ * not include Power.h at all when compiling in 64bit mode. This has
+ * been fixed in 10.6, but for 10.5, we manually define UsrActivity
+ * to ensure compilation works.
+ */
+#define UsrActivity 1
+#endif
 
 /* 
  * In Panther, this header defines device dependent masks for 
@@ -65,10 +78,10 @@
 #endif
 
 void     QZ_InitOSKeymap (_THIS) {
-    const void *KCHRPtr;
+    BOOL saw_layout = NO;
     UInt32 state;
     UInt32 value;
-    int i;
+    Uint16 i;
     int world = SDLK_WORLD_0;
 
     for ( i=0; i<SDL_TABLESIZE(keymap); ++i )
@@ -199,31 +212,96 @@ void     QZ_InitOSKeymap (_THIS) {
         why we keep the static table, too.
      */
 
-    /* Get a pointer to the systems cached KCHR */
-    KCHRPtr = (void *)GetScriptManagerVariable(smKCHRCache);
-    if (KCHRPtr)
-    {
-        /* Loop over all 127 possible scan codes */
-        for (i = 0; i < 0x7F; i++)
-        {
-            /* We pretend a clean start to begin with (i.e. no dead keys active */
-            state = 0;
+#if (MAC_OS_X_VERSION_MAX_ALLOWED >= 1050)
+    if (TISCopyCurrentKeyboardLayoutInputSource != NULL) {
+        TISInputSourceRef src = TISCopyCurrentKeyboardLayoutInputSource();
+        if (src != NULL) {
+            CFDataRef data = (CFDataRef)
+                TISGetInputSourceProperty(src,
+                    kTISPropertyUnicodeKeyLayoutData);
+            if (data != NULL) {
+                const UCKeyboardLayout *layout = (const UCKeyboardLayout *)
+                    CFDataGetBytePtr(data);
+                if (layout != NULL) {
+                    const UInt32 kbdtype = LMGetKbdType();
+                    saw_layout = YES;
 
-            /* Now translate the key code to a key value */
-            value = KeyTranslate(KCHRPtr, i, &state) & 0xff;
+                    /* Loop over all 127 possible scan codes */
+                    for (i = 0; i < 0x7F; i++) {
+                        UniChar buf[16];
+                        UniCharCount count = 0;
 
-            /* If the state become 0, it was a dead key. We need to translate again,
-                passing in the new state, to get the actual key value */
-            if (state != 0)
-                value = KeyTranslate(KCHRPtr, i, &state) & 0xff;
+                        /* We pretend a clean start to begin with (i.e. no dead keys active */
+                        state = 0;
 
-            /* Now we should have an ascii value, or 0. Try to figure out to which SDL symbol it maps */
-            if (value >= 128)     /* Some non-ASCII char, map it to SDLK_WORLD_* */
-                keymap[i] = world++;
-            else if (value >= 32)     /* non-control ASCII char */
-                keymap[i] = value;
+                        if (UCKeyTranslate(layout, i, kUCKeyActionDown, 0, kbdtype,
+                                           0, &state, 16, &count, buf) != noErr) {
+                            continue;
+                        }
+
+                        /* If the state become 0, it was a dead key. We need to
+                           translate again, passing in the new state, to get
+                           the actual key value */
+                        if (state != 0) {
+                            if (UCKeyTranslate(layout, i, kUCKeyActionDown, 0, kbdtype,
+                                               0, &state, 16, &count, buf) != noErr) {
+                                continue;
+                            }
+                        }
+
+                        if (count != 1) {
+                            continue;  /* no multi-char. Use SDL 1.3 instead. :) */
+                        }
+
+                        value = (UInt32) buf[0];
+                        if (value >= 128) {
+                            /* Some non-ASCII char, map it to SDLK_WORLD_* */
+                            if (world < 0xFF) {
+                                keymap[i] = world++;
+                            }
+                        } else if (value >= 32) {     /* non-control ASCII char */
+                            keymap[i] = value;
+                        }
+                    }
+                }
+            }
+            CFRelease(src);
         }
     }
+#endif
+
+#if (MAC_OS_X_VERSION_MIN_REQUIRED < 1050)
+    if (!saw_layout) {
+        /* Get a pointer to the systems cached KCHR */
+        const void *KCHRPtr = (const void *)GetScriptManagerVariable(smKCHRCache);
+        if (KCHRPtr)
+        {
+            /* Loop over all 127 possible scan codes */
+            for (i = 0; i < 0x7F; i++)
+            {
+                /* We pretend a clean start to begin with (i.e. no dead keys active */
+                state = 0;
+
+                /* Now translate the key code to a key value */
+                value = KeyTranslate(KCHRPtr, i, &state) & 0xff;
+
+                /* If the state become 0, it was a dead key. We need to translate again,
+                    passing in the new state, to get the actual key value */
+                if (state != 0)
+                    value = KeyTranslate(KCHRPtr, i, &state) & 0xff;
+
+                /* Now we should have an ascii value, or 0. Try to figure out to which SDL symbol it maps */
+                if (value >= 128) {     /* Some non-ASCII char, map it to SDLK_WORLD_* */
+                    if (world < 0xFF) {
+                        keymap[i] = world++;
+                    }
+                } else if (value >= 32) {     /* non-control ASCII char */
+                    keymap[i] = value;
+                }
+            }
+        }
+    }
+#endif
 
     /* 
         The keypad codes are re-setup here, because the loop above cannot
@@ -643,6 +721,8 @@ void QZ_DoActivate (_THIS) {
         QZ_GetMouseLocation (this, &p);
         SDL_PrivateMouseMotion (0, 0, p.x, p.y);
     }
+
+    QZ_UpdateCursor(this);
 }
 
 void QZ_DoDeactivate (_THIS) {
@@ -717,9 +797,7 @@ static int QZ_OtherMouseButtonToSDL(int button)
 
 void QZ_PumpEvents (_THIS)
 {
-    static Uint32 screensaverTicks = 0;
-    Uint32 nowTicks;
-    CGMouseDelta dx, dy;
+    int32_t dx, dy;
 
     NSDate *distantPast;
     NSEvent *event;
@@ -731,7 +809,8 @@ void QZ_PumpEvents (_THIS)
 
     /* Update activity every five seconds to prevent screensaver. --ryan. */
     if (!allow_screensaver) {
-        nowTicks = SDL_GetTicks();
+        static Uint32 screensaverTicks;
+        Uint32 nowTicks = SDL_GetTicks();
         if ((nowTicks - screensaverTicks) > 5000)
         {
             UpdateSystemActivity(UsrActivity);
@@ -841,7 +920,7 @@ void QZ_PumpEvents (_THIS)
                             so we have to call the lowlevel window server
                             function. This is less accurate but works OK.                         
                         */
-                        CGMouseDelta dx1, dy1;
+                        int32_t dx1, dy1;
                         CGGetLastMouseDelta (&dx1, &dy1);
                         dx += dx1;
                         dy += dy1;

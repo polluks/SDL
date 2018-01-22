@@ -1,6 +1,6 @@
 /*
     SDL - Simple DirectMedia Layer
-    Copyright (C) 1997-2006 Sam Lantinga
+    Copyright (C) 1997-2012 Sam Lantinga
 
     This library is free software; you can redistribute it and/or
     modify it under the terms of the GNU Lesser General Public
@@ -51,10 +51,13 @@
 /* Hidden "this" pointer for the video functions */
 #define _THIS	SDL_VideoDevice *this
 
+#define FULLSCREEN() \
+	((SDL_VideoSurface->flags & SDL_FULLSCREEN) == SDL_FULLSCREEN)
+
 #define WINDIB_FULLSCREEN()						\
 (									\
 	SDL_VideoSurface &&						\
-	((SDL_VideoSurface->flags & SDL_FULLSCREEN) == SDL_FULLSCREEN) && \
+	FULLSCREEN() && \
 	(((SDL_VideoSurface->flags & SDL_OPENGL   ) == SDL_OPENGL    ) || \
 	((SDL_strcmp(this->name, "windib") == 0) || \
 	 (SDL_strcmp(this->name, "gapi") == 0))) \
@@ -62,12 +65,18 @@
 #define DDRAW_FULLSCREEN() 						\
 (									\
 	SDL_VideoSurface &&						\
-	((SDL_VideoSurface->flags & SDL_FULLSCREEN) == SDL_FULLSCREEN) && \
+	FULLSCREEN() && \
 	((SDL_VideoSurface->flags & SDL_OPENGL    ) != SDL_OPENGL    ) && \
 	(SDL_strcmp(this->name, "directx") == 0)				\
 )
 
-#define DINPUT_FULLSCREEN()	DDRAW_FULLSCREEN()
+#define DINPUT_FULLSCREEN() 						\
+(									\
+	FULLSCREEN() && \
+	(strcmp(this->name, "directx") == 0)				\
+)
+
+#define DINPUT() (strcmp(this->name, "directx") == 0)
 
 /* The main window -- and a function to set it for the audio */
 #ifdef _WIN32_WCE
@@ -131,9 +140,13 @@ extern void DX5_SoundFocus(HWND window);
    GDL_CreateWindow as well */
 LRESULT CALLBACK WinMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
+#ifdef _WIN64
+#define SDL_ToUnicode  ToUnicode
+#else
 /* JFP: Implementation of ToUnicode() that works on 9x/ME/2K/XP */
-typedef int (WINAPI *ToUnicodeFN)(UINT, UINT, PBYTE, LPWSTR, int, UINT);
+typedef int (WINAPI *ToUnicodeFN)(UINT, UINT, const BYTE *, LPWSTR, int, UINT);
 
 extern ToUnicodeFN SDL_ToUnicode;
+#endif
 
 #endif /* SDL_lowvideo_h */

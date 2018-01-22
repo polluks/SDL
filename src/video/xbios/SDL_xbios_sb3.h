@@ -1,6 +1,6 @@
 /*
     SDL - Simple DirectMedia Layer
-    Copyright (C) 1997-2004 Sam Lantinga
+    Copyright (C) 1997-2012 Sam Lantinga
 
     This library is free software; you can redistribute it and/or
     modify it under the terms of the GNU Library General Public
@@ -57,7 +57,7 @@ typedef struct {
 	unsigned long	size;	/* Size of screen in bytes */
 	unsigned short	device;	/* Device number to find planes = getRez() */
 							/* = Index in scpn_planes_device[] */
-} __attribute__((packed)) scpn_screeninfo_t;
+} scpn_screeninfo_t;
 
 typedef struct {
 	unsigned long	magic;	/* just a BRA assembler jump */
@@ -71,12 +71,12 @@ typedef struct {
 	unsigned short	dummy4;
 	scpn_screeninfo_t	*screen_info;
 	unsigned short	dummy6;
-} __attribute__((packed)) scpn_cookie_t;
+} scpn_cookie_t;
 
 /*--- Function prototypes ---*/
 
 int SDL_XBIOS_SB3Usable(scpn_cookie_t *cookie_scpn);
 
-void SDL_XBIOS_SB3Init(_THIS, scpn_cookie_t *cookie_scpn);
+void SDL_XBIOS_ListSB3Modes(_THIS, int actually_add, scpn_cookie_t *cookie_scpn);
 
 #endif /* _SDL_xbios_sb3_h_ */
