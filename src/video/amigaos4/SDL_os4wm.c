@@ -21,6 +21,7 @@
 */
 #include "SDL_config.h"
 
+#include "../../../include/SDL_syswm.h"
 #include "../../events/SDL_events_c.h"
 #include "SDL_os4video.h"
 #include "SDL_os4utils.h"
