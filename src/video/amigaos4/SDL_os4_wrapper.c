@@ -1859,4 +1859,4 @@ void *AmiGetGLProc(const char *proc)
    return NULL;
 }
 
-#endif /*HAVE_OPENGL*/
+#endif
