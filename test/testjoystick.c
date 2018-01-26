@@ -182,7 +182,8 @@ int main(int argc, char *argv[])
 			SDL_JoystickClose(joystick);
 		}
 	}
-	SDL_QuitSubSystem(SDL_INIT_VIDEO|SDL_INIT_JOYSTICK);
 
+	//SDL_QuitSubSystem(SDL_INIT_VIDEO|SDL_INIT_JOYSTICK);
+	SDL_Quit();
 	return(0);
 }
