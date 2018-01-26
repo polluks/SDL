@@ -463,6 +463,20 @@ static void parseArgs(int argc, char* argv[], Uint32 *iterations, Uint32 *sleep)
 	printf("Iterations=%d, Delay=%d ms\n", *iterations, *sleep);
 }
 
+static void checkVersion(void)
+{
+	SDL_version compiled;
+
+	SDL_VERSION(&compiled);
+
+	printf("Compiled version: %d.%d.%d\n",
+			compiled.major, compiled.minor, compiled.patch);
+	
+    printf("Linked version: %d.%d.%d\n",
+			SDL_Linked_Version()->major,
+			SDL_Linked_Version()->minor,
+			SDL_Linked_Version()->patch);
+}
 static void printHelp(void)
 {
 	printf("USAGE: 'alphablit <ITER> <DELAY>', where\n"
@@ -527,7 +541,8 @@ int main(int argc, char* argv[])
 		{ FULLSCREEN, HW, PER_SURFACE_ALPHA, USE_COLOR_KEY, 32, 100 },
 #endif
 	};
-    
+
+    checkVersion();
 	printHelp();
 
 	Uint32 iterations = 100;
