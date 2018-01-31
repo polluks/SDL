@@ -52,6 +52,10 @@ extern void SDL_TimerQuit(void);
 static SDL_version version = 
 	{ SDL_MAJOR_VERSION, SDL_MINOR_VERSION, SDL_PATCHLEVEL };
 
+#ifdef __amigaos4__
+static const char __attribute((used)) amiga_ver[] = "$VER: SDL1_2_15 1.4 (22.01.2018)\0";
+#endif
+
 /* The initialized subsystems */
 static Uint32 SDL_initialized = 0;
 #if !SDL_TIMERS_DISABLED
@@ -147,8 +151,39 @@ int SDL_InitSubSystem(Uint32 flags)
 	return(0);
 }
 
+#ifdef __amigaos4__
+void os4thread_init(void);
+void os4thread_quit(void);
+
+void os4timer_init(void);
+void os4timer_quit();
+
+void os4video_init(void);
+void os4video_quit();
+
+static void os4_init(void)
+{
+    // Call "constructor" functions manually
+    os4timer_init();
+    os4thread_init();
+    os4video_init();
+}
+
+static void os4_quit(void)
+{
+    // Call "destructor" functions manually
+    os4video_quit();
+    os4thread_quit();
+    os4timer_quit();
+}
+#endif
+
 int SDL_Init(Uint32 flags)
 {
+#ifdef __amigaos4__
+    os4_init();
+#endif
+
 #if !SDL_THREADS_DISABLED && SDL_THREAD_PTH
 	if (!pth_init()) {
 		return -1;
@@ -246,6 +281,9 @@ void SDL_Quit(void)
   printf("[SDL_Quit] : Returning!\n"); fflush(stdout);
 #endif
 
+#ifdef __amigaos4__
+    os4_quit();
+#endif
 }
 
 /* Return the library version number */

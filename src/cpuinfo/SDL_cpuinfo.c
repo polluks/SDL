@@ -37,6 +37,11 @@
 #include <setjmp.h>
 #endif
 
+#ifdef __amigaos4__
+#include <proto/exec.h>
+#include <exec/exectags.h>
+#endif
+
 #define CPU_HAS_RDTSC	0x00000001
 #define CPU_HAS_MMX	0x00000002
 #define CPU_HAS_MMXEXT	0x00000004
@@ -375,6 +380,13 @@ static __inline__ int CPU_haveAltiVec(void)
 	int error = sysctl(selectors, 2, &hasVectorUnit, &length, NULL, 0); 
 	if( 0 == error )
 		altivec = (hasVectorUnit != 0); 
+#elif defined __amigaos4__
+	{
+		uint32 vec_unit;
+
+		IExec->GetCPUInfoTags(GCIT_VectorUnit, &vec_unit, TAG_DONE);
+		altivec = (vec_unit == VECTORTYPE_ALTIVEC);
+	}
 #elif SDL_ALTIVEC_BLITTERS && HAVE_SETJMP
 	void (*handler)(int sig);
 	handler = signal(SIGILL, illegal_instruction);

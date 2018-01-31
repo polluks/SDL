@@ -50,6 +50,10 @@
 #undef __glext_h_
 #endif
 
+#ifdef __amigaos4__
+#include <mgl/gl.h>
+#endif
+
 /** @name GLext.h
  *  This file taken from "GLext.h" from the Jeff Molofee OpenGL tutorials.
  *  It is included here because glext.h is not available on some systems.

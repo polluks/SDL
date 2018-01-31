@@ -93,6 +93,9 @@ static VideoBootStrap *bootstrap[] = {
 #if SDL_VIDEO_DRIVER_DRAWSPROCKET
 	&DSp_bootstrap,
 #endif
+#if SDL_VIDEO_DRIVER_CYBERGRAPHICS
+	&CGX_bootstrap,
+#endif
 #if SDL_VIDEO_DRIVER_PHOTON
 	&ph_bootstrap,
 #endif
@@ -128,6 +131,9 @@ static VideoBootStrap *bootstrap[] = {
 #endif
 #if SDL_VIDEO_DRIVER_DUMMY
 	&DUMMY_bootstrap,
+#endif
+#if SDL_VIDEO_DRIVER_AMIGAOS4
+	&os4video_bootstrap,
 #endif
 	NULL
 };
