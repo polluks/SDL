@@ -46,11 +46,12 @@ extern struct P96IFace       *SDL_IP96;
 extern struct IntuitionIFace *SDL_IIntuition;
 
 #ifdef DEBUG
-static char *get_flags_str(Uint32 flags)
+static char *
+get_flags_str(Uint32 flags)
 {
-    static char buffer[256];
+	static char buffer[256];
 
-    buffer[0] = '\0';
+	buffer[0] = '\0';
 
 	if (flags & SDL_HWSURFACE)		SDL_strlcat(buffer, "HWSURFACE ", sizeof(buffer));
 	if (flags & SDL_SRCCOLORKEY)	SDL_strlcat(buffer, "SRCCOLORKEY ", sizeof(buffer));
@@ -59,11 +60,12 @@ static char *get_flags_str(Uint32 flags)
 	if (flags & SDL_SRCALPHA)		SDL_strlcat(buffer, "SRCALPHA ", sizeof(buffer));
 	if (flags & SDL_PREALLOC)		SDL_strlcat(buffer, "PREALLOC ", sizeof(buffer));
 
-    return buffer;
+	return buffer;
 }
 #endif
 
-int os4video_AllocHWSurface(_THIS, SDL_Surface *surface)
+int
+os4video_AllocHWSurface(_THIS, SDL_Surface *surface)
 {
 	int result = -1;
 
@@ -105,8 +107,7 @@ int os4video_AllocHWSurface(_THIS, SDL_Surface *surface)
 
 		if (surface->hwdata->bm)
 		{
-			/* Successfully created bitmap */
-			dprintf ("Created bitmap %p\n", surface->hwdata->bm);
+			dprintf("Created bitmap %p\n", surface->hwdata->bm);
 
 			dprintf("BITMAP w %d, h %d, depth %d, bytes %d, bits %d\n",
 				SDL_IP96->p96GetBitMapAttr(surface->hwdata->bm, P96BMA_WIDTH),
@@ -120,16 +121,19 @@ int os4video_AllocHWSurface(_THIS, SDL_Surface *surface)
 		}
 		else
 		{
-			/* Failed */
-			dprintf ("Failed to create bitmap\n");
+			dprintf("Failed to create bitmap\n");
+			SDL_SetError("Failed to create bitmap");
+
 			SaveFreePooled(_this->hidden, surface->hwdata, sizeof(struct private_hwdata));
 			surface->hwdata = NULL;
 		}
 	}
+
 	return result;
 }
 
-void os4video_FreeHWSurface(_THIS, SDL_Surface *surface)
+void
+os4video_FreeHWSurface(_THIS, SDL_Surface *surface)
 {
 	dprintf("Freeing HW surface %p\n", surface);
 
@@ -138,7 +142,6 @@ void os4video_FreeHWSurface(_THIS, SDL_Surface *surface)
 		/* Check if this is surface allocated by AllocHWSurface */
 		if (surface->hwdata && surface->hwdata->type == hwdata_bitmap)
 		{
-			/* Yes. Free BitMap */
 			dprintf("Freeing bitmap %p\n", surface->hwdata->bm);
 
 			SDL_IGraphics->FreeBitMap(surface->hwdata->bm);
@@ -153,10 +156,12 @@ void os4video_FreeHWSurface(_THIS, SDL_Surface *surface)
 			surface->hwdata = NULL;
 		}
 	}
+
 	return;
 }
 
-int os4video_LockHWSurface(_THIS, SDL_Surface *surface)
+int
+os4video_LockHWSurface(_THIS, SDL_Surface *surface)
 {
 	int success = -1;
 	struct private_hwdata *hwdata = surface->hwdata;
@@ -165,8 +170,8 @@ int os4video_LockHWSurface(_THIS, SDL_Surface *surface)
 
 	if (hwdata->bm)
 	{
-	    APTR base_address;
-	    uint32 bytes_per_row;
+		APTR base_address;
+		uint32 bytes_per_row;
 
 		/* We're locking a surface in video memory (either a full-screen hardware display
 		 * surface or a hardware off-screen surface). We need to get P96 to lock that the
@@ -195,17 +200,20 @@ int os4video_LockHWSurface(_THIS, SDL_Surface *surface)
 									+ _this->offset_x * surface->format->BytesPerPixel;
 			}
 
-			/* Done */
 			success = 0;
 		}
 		else
-			dprintf ("Failed to lock bitmap:%p\n", surface->hwdata->bm);
+		{
+			dprintf("Failed to lock bitmap: %p\n", surface->hwdata->bm);
+			SDL_SetError("Failed to lock bitmap");
+		}
 	}
 
 	return success;
 }
 
-void os4video_UnlockHWSurface(_THIS, SDL_Surface *surface)
+void
+os4video_UnlockHWSurface(_THIS, SDL_Surface *surface)
 {
 	struct private_hwdata *hwdata = surface->hwdata;
 
@@ -216,12 +224,13 @@ void os4video_UnlockHWSurface(_THIS, SDL_Surface *surface)
 	surface->pixels = (uint8*)0xcccccccc;
 }
 
-int os4video_FillHWRect(_THIS, SDL_Surface *dst, SDL_Rect *rect, Uint32 color)
+int
+os4video_FillHWRect(_THIS, SDL_Surface *dst, SDL_Rect *rect, Uint32 color)
 {
-//	dprintf("x=%d y=%d w=%d h=%d color=%08x\n", rect->x, rect->y, rect->w, rect->h, color);
+    //dprintf("x=%d y=%d w=%d h=%d color=%08x\n", rect->x, rect->y, rect->w, rect->h, color);
 
-	int    xmin, ymin;
-	int    xmax, ymax;
+	int xmin, ymin;
+	int xmax, ymax;
 
 	struct RastPort *rp = NULL;
 
@@ -236,7 +245,7 @@ int os4video_FillHWRect(_THIS, SDL_Surface *dst, SDL_Rect *rect, Uint32 color)
 
 		if (dst->hwdata->type == hwdata_display_hw)
 		{
-			if (!(dst->flags & SDL_DOUBLEBUF))
+			if (!(dst->flags & SDL_DOUBLEBUF) && (dst->flags & SDL_FULLSCREEN))
 			{
 				rp = _this->hidden->win->RPort;
 			}
@@ -257,8 +266,8 @@ int os4video_FillHWRect(_THIS, SDL_Surface *dst, SDL_Rect *rect, Uint32 color)
 		if (dst->format->BitsPerPixel > 8)
 		{
 			/* Convert hi/true-colour pixel format to ARGB32 format for P96 fill.
-		 	 * Bloody stupid if you ask me, 'cos P96 will have to convert it
-		 	 * back again */
+			 * Bloody stupid if you ask me, 'cos P96 will have to convert it
+			 * back again */
 			struct SDL_PixelFormat *format = dst->format;
 			uint32 argb_colour;
 
@@ -275,13 +284,18 @@ int os4video_FillHWRect(_THIS, SDL_Surface *dst, SDL_Rect *rect, Uint32 color)
 			SDL_IGraphics->SetAPen(rp, color);
 			SDL_IGraphics->RectFill(rp, xmin, ymin, xmax, ymax);
 		}
+
 		return 0;
 	}
-	else
-		return -1;
+
+	dprintf("HW data missing\n");
+	SDL_SetError("HW data missing");
+
+	return -1;
 }
 
-static void os4video_composite(struct BitMap *src_bm, struct BitMap *dst_bm,
+static BOOL
+os4video_composite(struct BitMap *src_bm, struct BitMap *dst_bm,
 	float surface_alpha, struct BitMap *colorkey_bm,
 	uint32 src_x, uint32 src_y,
 	uint32 width, uint32 height,
@@ -300,59 +314,111 @@ static void os4video_composite(struct BitMap *src_bm, struct BitMap *dst_bm,
 		COMPTAG_SrcHeight,  height,
 		COMPTAG_OffsetX,    dst_x,
 		COMPTAG_OffsetY,    dst_y,
-		//COMPTAG_DestX,      dstrect->x,
-		//COMPTAG_DestY,      dstrect->y,
-		//COMPTAG_DestWidth,  srcrect->w,
-		//COMPTAG_DestHeight, srcrect->h,
-		COMPTAG_Flags,      flags,
+		COMPTAG_Flags,      COMPFLAG_IgnoreDestAlpha | COMPFLAG_HardwareOnly | flags,
 		TAG_END);
 
-		if (ret_code)
+	if (ret_code)
+	{
+#ifdef DEBUG
+		static uint32 counter = 0;
+
+		if ((counter++ % 100) == 0)
 		{
-			dprintf("CompositeTags: %d\n", ret_code);
+			dprintf("CompositeTags failed (%u): %d\n", counter, ret_code);
 		}
+#endif
+		SDL_SetError("CompositeTags failed");
+
+		return FALSE;
+	}
+
+	return TRUE;
 }
 
-static int os4video_HWAccelBlit(SDL_Surface *src, SDL_Rect *srcrect,
-			        SDL_Surface *dst, SDL_Rect *dstrect)
+static BOOL
+os4video_hasAlphaBlending(SDL_Surface *src)
 {
-	//dprintf("called\n");
+	return ((src->flags & SDL_SRCALPHA) == SDL_SRCALPHA);
+}
 
-	struct BitMap   *src_bm = src->hwdata->bm;
+static BOOL
+os4video_hasAlphaChannel(SDL_Surface *src)
+{
+	return (src->format->Amask == 0xFF000000 || src->format->Amask == 0x000000FF);
+}
 
-	//dprintf("src_bm %p, dst->hwdata->bm %p\n", src_bm, dst->hwdata->bm);
+static BOOL
+os4video_hasColorKey(SDL_Surface *src)
+{
+	return ((src->flags & SDL_SRCCOLORKEY) == SDL_SRCCOLORKEY);
+}
+
+static float
+os4video_getSurfaceAlpha(SDL_Surface *src)
+{
+	if (os4video_hasAlphaChannel(src))
+	{
+		//dprintf("Surface has alpha channel, per-surface alpha %d ignored\n",
+		//	  src->format->alpha);
+
+		return 1.0f;
+	}
+
+	//dprintf("Using per-surface alpha %d\n", src->format->alpha);
+
+	return src->format->alpha / 255.0f;
+}
+
+static uint32
+os4video_getOverrideFlag(SDL_Surface *src)
+{
+	if (os4video_hasAlphaChannel(src) || os4video_hasColorKey(src))
+	{
+		return 0;
+	}
+
+	return COMPFLAG_SrcAlphaOverride;
+}
+
+static int
+os4video_HWAccelBlit(SDL_Surface *src, SDL_Rect *srcrect,
+	SDL_Surface *dst, SDL_Rect *dstrect)
+{
+	struct BitMap *src_bm = src->hwdata->bm;
 
 	if (src_bm)
 	{
-		if (src->flags & SDL_SRCALPHA)
+		if (os4video_hasAlphaBlending(src))
 		{
-			uint32 flags = COMPFLAG_IgnoreDestAlpha | COMPFLAG_HardwareOnly;
-
-			// Per-surface alpha
-			float surface_alpha = src->format->alpha / 255.0f;
-
-//			dprintf("Per-surface alpha: %d\n", src->format->alpha);
-
-			os4video_composite(src_bm, dst->hwdata->bm, surface_alpha,
+			BOOL ret = os4video_composite(src_bm, dst->hwdata->bm,
+				os4video_getSurfaceAlpha(src),
 				src->hwdata->colorkey_bm,
 				srcrect->x, srcrect->y,
 				srcrect->w, srcrect->h,
 				dstrect->x, dstrect->y,
-				flags);
+				os4video_getOverrideFlag(src));
+
+			if (!ret)
+			{
+				return -1;
+			}
 		}
 		else
 		{
-			if (src->flags & SDL_SRCCOLORKEY)
+			if (os4video_hasColorKey(src))
 			{
-				uint32 flags = COMPFLAG_IgnoreDestAlpha | COMPFLAG_HardwareOnly;
-				float surface_alpha = 1.0f;
-
-				os4video_composite(src_bm, dst->hwdata->bm, surface_alpha,
+				BOOL ret = os4video_composite(src_bm, dst->hwdata->bm,
+					1.0f,
 					src->hwdata->colorkey_bm,
 					srcrect->x, srcrect->y,
 					srcrect->w, srcrect->h,
 					dstrect->x, dstrect->y,
-					flags);
+					0);
+
+				if (!ret)
+				{
+					return -1;
+				}
 			}
 			else
 			{
@@ -369,15 +435,23 @@ static int os4video_HWAccelBlit(SDL_Surface *src, SDL_Rect *srcrect,
 
 				if (error != -1)
 				{
-				    dprintf("BltBitMapTags() returned %d", error);
+					dprintf("BltBitMapTags() returned %d\n", error);
+					SDL_SetError("BltBitMapTags failed");
+					return -1;
 				}
 			}
 		}
 	}
+	else
+	{
+		dprintf("NULL bitmap\n");
+	}
+
 	return 0;
 }
 
-int os4video_CheckHWBlit(_THIS, SDL_Surface *src, SDL_Surface *dst)
+int
+os4video_CheckHWBlit(_THIS, SDL_Surface *src, SDL_Surface *dst)
 {
 	dprintf("src flags:%s dst flags:%s\n", get_flags_str(src->flags), get_flags_str(dst->flags));
 
@@ -388,14 +462,14 @@ int os4video_CheckHWBlit(_THIS, SDL_Surface *src, SDL_Surface *dst)
 		if (src->format->BitsPerPixel > 8)
 		{
 			/* With compositing feature we can accelerate alpha and color key too */
-			if ((_this->hidden->haveCompositing == TRUE) || !(src->flags & (SDL_SRCALPHA|SDL_SRCCOLORKEY)))
+			if ((_this->hidden->haveCompositing == TRUE) || !(src->flags & (SDL_SRCALPHA | SDL_SRCCOLORKEY)))
 			{
 				accelerated = 1;
 			}
 		}
 		else
 		{
-			if ( ! (src->flags & (SDL_SRCALPHA|SDL_SRCCOLORKEY) ) )
+			if (!(src->flags & (SDL_SRCALPHA | SDL_SRCCOLORKEY)))
 			{
 				accelerated = 1;
 			}
@@ -419,17 +493,22 @@ int os4video_CheckHWBlit(_THIS, SDL_Surface *src, SDL_Surface *dst)
 	return accelerated;
 }
 
-int os4video_SetHWAlpha(_THIS, SDL_Surface *src, Uint8 value)
+int
+os4video_SetHWAlpha(_THIS, SDL_Surface *src, Uint8 value)
 {
 	if (src->hwdata && (src->format->BitsPerPixel > 8) && (_this->hidden->haveCompositing == TRUE))
 	{
 		return 0;
 	}
 
+	dprintf("Failed to set HW alpha\n");
+	SDL_SetError("Failed to set HW alpha");
+
 	return -1;
 }
 
-static void os4video_CreateAlphaMask(struct BitMap *src_bm, struct BitMap *mask_bm, Uint32 key)
+static void
+os4video_CreateAlphaMask(struct BitMap *src_bm, struct BitMap *mask_bm, Uint32 key)
 {
 	APTR src_base_address;
 	uint32 src_bytes_per_row;
@@ -483,13 +562,13 @@ static void os4video_CreateAlphaMask(struct BitMap *src_bm, struct BitMap *mask_
 						for (x = 0; x < mask_bytes_per_row; x++)
 						{
 							mask_ptr[x] = (src_ptr[x] == key) ? 0 : 0xFF;
-			    		}
+						}
 					} break;
 
 					// TODO: Should we support 24-bit modes?
 					default:
 						dprintf("Unknown pixel format!\n");
-		    			break;
+						break;
 				}
 			}
 
@@ -500,7 +579,8 @@ static void os4video_CreateAlphaMask(struct BitMap *src_bm, struct BitMap *mask_
 	}
 }
 
-int os4video_SetHWColorKey(_THIS, SDL_Surface *src, Uint32 key)
+int
+os4video_SetHWColorKey(_THIS, SDL_Surface *src, Uint32 key)
 {
 	if (src->hwdata && (src->format->BitsPerPixel > 8) && (_this->hidden->haveCompositing == TRUE))
 	{
@@ -528,10 +608,13 @@ int os4video_SetHWColorKey(_THIS, SDL_Surface *src, Uint32 key)
 		}
 	}
 
+	dprintf("Failed to set HW color key\n");
+	SDL_SetError("Failed to set HW color key");
 	return -1;
 }
 
-int os4video_FlipHWSurface(_THIS, SDL_Surface *surface)
+int
+os4video_FlipHWSurface(_THIS, SDL_Surface *surface)
 {
 	struct SDL_PrivateVideoData *hidden = _this->hidden;
 	struct private_hwdata       *hwdata = &hidden->screenHWData;
@@ -540,7 +623,7 @@ int os4video_FlipHWSurface(_THIS, SDL_Surface *surface)
 	{
 		struct DoubleBufferData *dbData = &hidden->dbData;
 
-		dprintf("Flipping double-buffered surface\n");
+		//dprintf("Flipping double-buffered surface\n");
 
 		if (!dbData->SafeToFlip)
 		{
@@ -584,19 +667,19 @@ int os4video_FlipHWSurface(_THIS, SDL_Surface *surface)
 	return 0;
 }
 
-void os4video_UpdateRectsFullscreenDB(_THIS, int numrects, SDL_Rect *rects)
+void
+os4video_UpdateRectsFullscreenDB(_THIS, int numrects, SDL_Rect *rects)
 {
-	// dprintf("*** IMPLEMENT ME ***\n");
-	//
-	// Nah! Don't bother. This should be a no-op.
+	// NOP
 }
 
-void os4video_UpdateRectsNone(_THIS, int numrects, SDL_Rect *rects)
+void
+os4video_UpdateRectsNone(_THIS, int numrects, SDL_Rect *rects)
 {
 }
 
-
-static void os4video_OffscreenHook_8bit (struct Hook *hook, struct RastPort *rp, int *message)
+static void
+os4video_OffscreenHook_8bit (struct Hook *hook, struct RastPort *rp, int *message)
 {
 	SDL_VideoDevice *_this = (SDL_VideoDevice *)hook->h_Data;
 	struct SDL_PrivateVideoData *hidden = _this->hidden;
@@ -645,7 +728,7 @@ static void os4video_OffscreenHook_8bit (struct Hook *hook, struct RastPort *rp,
 					dst += dst_bytes_per_row;
 					src += srcPitch;
 					line ++;
-             	}
+				}
 				break;
 			case 3:
 				while (line <= rect->MaxY)
@@ -654,7 +737,7 @@ static void os4video_OffscreenHook_8bit (struct Hook *hook, struct RastPort *rp,
 					dst += dst_bytes_per_row;
 					src += srcPitch;
 					line ++;
-             	}
+				}
 				break;
 			case 4:
 				while (line <= rect->MaxY)
@@ -670,7 +753,9 @@ static void os4video_OffscreenHook_8bit (struct Hook *hook, struct RastPort *rp,
 		SDL_IGraphics->UnlockBitMap(dst_lock);
 	}
 	else
+	{
 		dprintf("Bitmap lock failed\n");
+	}
 }
 
 #ifndef MIN
@@ -681,7 +766,8 @@ static void os4video_OffscreenHook_8bit (struct Hook *hook, struct RastPort *rp,
  * Flush rectanges from off-screen buffer to the screen
  * Special case for palettized off-screen buffers
  */
-void os4video_UpdateRectsOffscreen_8bit(_THIS, int numrects, SDL_Rect *rects)
+void
+os4video_UpdateRectsOffscreen_8bit(_THIS, int numrects, SDL_Rect *rects)
 {
 #ifdef PROFILE_UPDATE_RECTS
 	uint32 start;
@@ -737,7 +823,8 @@ void os4video_UpdateRectsOffscreen_8bit(_THIS, int numrects, SDL_Rect *rects)
 /*
  * Flush rectanges from off-screen buffer to the screen
  */
-void os4video_UpdateRectsOffscreen(_THIS, int numrects, SDL_Rect *rects)
+void
+os4video_UpdateRectsOffscreen(_THIS, int numrects, SDL_Rect *rects)
 {
 	struct SDL_PrivateVideoData *hidden = _this->hidden;
 	struct Window               *w      = hidden->win;
