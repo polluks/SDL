@@ -47,10 +47,11 @@
 
 static struct MiniGLIFace *IMiniGL = 0;
 static struct Library *MiniGLBase = 0;
-//static struct GLContextIFace *IGL;
 
 extern struct IntuitionIFace *SDL_IIntuition;
 extern struct GraphicsIFace  *SDL_IGraphics;
+
+extern void SDL_Quit(void);
 
 /* The client program needs access to this context pointer
  * to be able to make GL calls. This presents no problems when
@@ -60,117 +61,213 @@ extern struct GraphicsIFace  *SDL_IGraphics;
  */
 struct GLContextIFace *mini_CurrentContext = 0;
 
+static int os4video_GetPixelDepth(_THIS)
+{
+	int depth = _this->gl_config.buffer_size;
+
+	if (depth < 16) {
+		depth = 16;
+	}
+
+	return depth;
+}
+
+static struct BitMap *
+os4video_AllocateBitMap(_THIS, int width, int height, int depth)
+{
+	struct SDL_PrivateVideoData *hidden = _this->hidden;
+
+	dprintf("Allocating bitmap %d*%d*%d\n", width, height, depth);
+
+	return SDL_IGraphics->AllocBitMapTags(
+		width,
+		height,
+		depth,
+		BMATags_Displayable, TRUE,
+		BMATags_Friend, hidden->win->RPort->BitMap,
+		TAG_DONE);
+}
+
+SDL_bool
+os4video_AllocateOpenGLBuffers(_THIS, int width, int height)
+{
+	struct SDL_PrivateVideoData *hidden = _this->hidden;
+	int depth = os4video_GetPixelDepth(_this);
+
+	if (hidden->frontBuffer)
+	{
+		SDL_IGraphics->FreeBitMap(hidden->frontBuffer);
+		hidden->frontBuffer = NULL;
+	}
+
+	if (hidden->backBuffer)
+	{
+		SDL_IGraphics->FreeBitMap(hidden->backBuffer);
+		hidden->backBuffer = NULL;
+	}
+
+	if (!(hidden->frontBuffer = os4video_AllocateBitMap(_this, width, height, depth)))
+	{
+		dprintf("Fatal error: Can't allocate memory for OpenGL bitmap\n");
+		SDL_Quit();
+		return SDL_FALSE;
+	}
+
+	if (!(hidden->backBuffer = os4video_AllocateBitMap(_this, width, height, depth)))
+	{
+		SDL_IGraphics->FreeBitMap(hidden->frontBuffer);
+
+		dprintf("Fatal error: Can't allocate memory for OpenGL bitmap\n");
+		SDL_Quit();
+		return SDL_FALSE;
+	}
+
+	hidden->IGL->MGLUpdateContextTags(
+					MGLCC_FrontBuffer, hidden->frontBuffer,
+					MGLCC_BackBuffer, hidden->backBuffer,
+					TAG_DONE);
+
+	hidden->IGL->GLViewport(0, 0, width, height);
+
+	return SDL_TRUE;
+}
+
+
 /*
  * Open MiniGL and initialize GL context
  */
-int os4video_GL_Init(_THIS)
+int
+os4video_GL_Init(_THIS)
 {
 	struct SDL_PrivateVideoData *hidden = _this->hidden;
-    int w,h;
+	int width, height, depth;
 
-	if( hidden->dontdeletecontext ) return 0;
+	dprintf("Initializing MiniGL (window %p)...\n", hidden->win);
 
-//	printf("Creating context for window %p\n", hidden->win);
-
-	dprintf("Initializing OpenGL.. ");
-	MiniGLBase = IExec->OpenLibrary("minigl.library", 0);
-	if (!MiniGLBase)
+	if (hidden->IGL)
 	{
-		SDL_SetError("Failed to open minigl.library");
-		hidden->OpenGL = FALSE;
-		return -1;
+		// Happens when toggling fullscreen mode
+		dprintf("Old OpenGL context exists\n");
+		return 0;
 	}
 
-	IMiniGL = (struct MiniGLIFace *)IExec->GetInterface(MiniGLBase, "main", 1, NULL);
-	if (!IMiniGL)
+	if (MiniGLBase)
 	{
-		SDL_SetError("Failed to obtain minigl.library interface");
-		hidden->OpenGL = FALSE;
-		IExec->CloseLibrary(MiniGLBase);
+		dprintf("MiniGLBase already open\n");
+	}
+	else
+	{
+		MiniGLBase = IExec->OpenLibrary("minigl.library", 2);
 
-		return -1;
+		if (!MiniGLBase)
+		{
+			dprintf("Failed to open minigl.library\n");
+			SDL_SetError("Failed to open minigl.library");
+			hidden->OpenGL = FALSE;
+			return -1;
+		}
 	}
 
-	SDL_IIntuition->GetWindowAttrs(hidden->win,WA_InnerWidth,&w,WA_InnerHeight,&h,TAG_DONE);
-
-	if (!(hidden->m_frontBuffer = SDL_IGraphics->AllocBitMapTags(
-		w,
-		h,
-		16,
-		BMATags_Displayable, TRUE,
-		BMATags_Friend, hidden->win->RPort->BitMap,
-		TAG_DONE)))
+	if (IMiniGL)
 	{
+		dprintf("IMiniGL already open\n");
+	}
+	else
+	{
+		IMiniGL = (struct MiniGLIFace *)IExec->GetInterface(MiniGLBase, "main", 1, NULL);
+
+		if (!IMiniGL)
+		{
+			dprintf("Failed to obtain IMiniGL\n");
+			SDL_SetError("Failed to obtain minigl.library interface");
+			hidden->OpenGL = FALSE;
+			IExec->CloseLibrary(MiniGLBase);
+
+			return -1;
+		}
+	}
+
+	SDL_IIntuition->GetWindowAttrs(hidden->win, WA_InnerWidth, &width, WA_InnerHeight, &height, TAG_DONE);
+	
+	depth = os4video_GetPixelDepth(_this);
+
+	if (!(hidden->frontBuffer = os4video_AllocateBitMap(_this, width, height, depth)))
+	{
+		dprintf("Failed to allocate bitmap\n");
 		SDL_SetError("Failed to allocate a Bitmap for the front buffer");
 		return -1;
 	}
 
-	if (!(hidden->m_backBuffer = SDL_IGraphics->AllocBitMapTags(
-		w,
-		h,
-		16,
-		BMATags_Displayable, TRUE,
-		BMATags_Friend, hidden->win->RPort->BitMap,
-		TAG_DONE)))
+	if (!(hidden->backBuffer = os4video_AllocateBitMap(_this, width, height, depth)))
 	{
+		dprintf("Failed to allocate bitmap\n");
 		SDL_SetError("Failed to allocate a Bitmap for the back buffer");
-		SDL_IGraphics->FreeBitMap(hidden->m_frontBuffer);
+		SDL_IGraphics->FreeBitMap(hidden->frontBuffer);
 		return -1;
 	}
 
 	hidden->IGL = IMiniGL->CreateContextTags(
-                                     MGLCC_PrivateBuffers, 	2,
-                                     MGLCC_FrontBuffer,		hidden->m_frontBuffer,
-                                     MGLCC_BackBuffer,		hidden->m_backBuffer,
-                                     MGLCC_Buffers,  		2,             /* double buffered */
-                                     MGLCC_PixelDepth,      16,  // fixed at 16 for now 32 causes issues on SAM440ep with onboard graphics , make user setable later
-                                     MGLCC_StencilBuffer,   TRUE,
-                                     MGLCC_VertexBufferSize,1 << 17,
-									 TAG_DONE);
+		MGLCC_PrivateBuffers,   2,
+		MGLCC_FrontBuffer,      hidden->frontBuffer,
+		MGLCC_BackBuffer,       hidden->backBuffer,
+		MGLCC_Buffers,          2,
+		MGLCC_PixelDepth,       depth,
+		MGLCC_StencilBuffer,    TRUE,
+		MGLCC_VertexBufferSize, 1 << 17,
+		TAG_DONE);
 
 	if (hidden->IGL)
 	{
 		_this->gl_config.driver_loaded = 1;
 
-        hidden->IGL->GLViewport(0,0,w,h);
+		hidden->IGL->GLViewport(0, 0, width, height);
+		hidden->OpenGL = TRUE; // TODO: is this flag needed at all?
 
 		mglMakeCurrent(hidden->IGL);
 		mglLockMode(MGL_LOCK_SMART);
-		hidden->OpenGL = TRUE;
 
 		return 0;
 	}
 	else
 	{
 		_this->gl_config.driver_loaded = 0;
+
+		dprintf("Failed to create MiniGL context\n");
 		SDL_SetError("Failed to create MiniGL context");
 	}
 
 	return -1;
 }
 
-void os4video_GL_Term(_THIS)
+void
+os4video_GL_Term(_THIS)
 {
 	struct SDL_PrivateVideoData *hidden = _this->hidden;
 
-	if( hidden->dontdeletecontext ) return;
+	dprintf("Here\n");
 
 	if (hidden->OpenGL)
 	{
-        if(hidden->m_frontBuffer)
-        {
-            SDL_IGraphics->FreeBitMap(hidden->m_frontBuffer);
-            hidden->m_frontBuffer = NULL;
-        }
-        if(hidden->m_backBuffer)
-        {
-            SDL_IGraphics->FreeBitMap(hidden->m_backBuffer);
-            hidden->m_backBuffer = NULL;
-        }
+		if (hidden->frontBuffer)
+		{
+			SDL_IGraphics->FreeBitMap(hidden->frontBuffer);
+			hidden->frontBuffer = NULL;
+		}
+
+		if (hidden->backBuffer)
+		{
+			SDL_IGraphics->FreeBitMap(hidden->backBuffer);
+			hidden->backBuffer = NULL;
+		}
 
 		hidden->IGL->DeleteContext();
+		hidden->IGL = NULL;
+
 		IExec->DropInterface((struct Interface *)IMiniGL);
 		IExec->CloseLibrary(MiniGLBase);
+
+		IMiniGL = NULL;
+		MiniGLBase = NULL;
 
 		_this->gl_config.driver_loaded = 0;
 
@@ -178,20 +275,22 @@ void os4video_GL_Term(_THIS)
 	}
 }
 
-int	os4video_GL_GetAttribute(_THIS, SDL_GLattr attrib, int* value)
+int
+os4video_GL_GetAttribute(_THIS, SDL_GLattr attrib, int* value)
 {
 	struct SDL_PrivateVideoData *hidden = _this->hidden;
-	struct BitMap *bm = hidden->screenHWData.bm;
+
 	SDL_PixelFormat pf;
-	PIX_FMT rgbFormat;
+	PIX_FMT pixelFormat;
 
-	if (!bm)
+	pixelFormat = hidden->screenNativeFormat;
+
+	if (!os4video_PIXFtoPF(&pf, pixelFormat))
+	{
+		dprintf("Pixel format conversion failed\n");
+		SDL_SetError("Pixel format conversion failed");
 		return -1;
-
-	rgbFormat = SDL_IGraphics->GetBitMapAttr(bm, BMA_PIXELFORMAT);
-
-	if (!os4video_PIXFtoPF(&pf, rgbFormat))
-		return -1;
+	}
 
 	switch (attrib)
 	{
@@ -208,8 +307,8 @@ int	os4video_GL_GetAttribute(_THIS, SDL_GLattr attrib, int* value)
 			return 0;
 
 		case SDL_GL_ALPHA_SIZE:
-			if (rgbFormat == PIXF_A8R8G8B8 || rgbFormat == PIXF_A8B8G8R8
-			 || rgbFormat == PIXF_R8G8B8A8 || rgbFormat == PIXF_B8G8R8A8)
+			if (pixelFormat == PIXF_A8R8G8B8 || pixelFormat == PIXF_A8B8G8R8
+			 || pixelFormat == PIXF_R8G8B8A8 || pixelFormat == PIXF_B8G8R8A8)
 				*value = 8;
 			else
 				*value = 0;
@@ -238,84 +337,84 @@ int	os4video_GL_GetAttribute(_THIS, SDL_GLattr attrib, int* value)
 		case SDL_GL_ACCUM_GREEN_SIZE:
 		case SDL_GL_ACCUM_BLUE_SIZE:
 		case SDL_GL_ACCUM_ALPHA_SIZE:
+		case SDL_GL_ACCELERATED_VISUAL:
+		case SDL_GL_SWAP_CONTROL:
 			*value = 0;
-			return -1;
-
-		default:
 			break;
 	}
+
+	dprintf("Not supported attribute %d\n", attrib);
+	SDL_SetError("Not supported attribute");
 
 	return -1;
 }
 
-int	os4video_GL_MakeCurrent(_THIS)
+int
+os4video_GL_MakeCurrent(_THIS)
 {
+	dprintf("Here\n");
 	return 0;
 }
 
-void os4video_GL_SwapBuffers(_THIS)
+void
+os4video_GL_SwapBuffers(_THIS)
 {
-	struct SDL_PrivateVideoData *hidden = _this->hidden;
-	int w,h;
-    GLint buf;
-	struct BitMap *temp;
-
 	SDL_Surface *video = SDL_VideoSurface;
 
-//	if (video && video->flags & SDL_FULLSCREEN)
 	if (video)
 	{
+		struct SDL_PrivateVideoData *hidden = _this->hidden;
+
+		int width, height;
+		GLint buf;
+		struct BitMap *bitmap;
+
 		mglUnlockDisplay();
 
-		SDL_IIntuition->GetWindowAttrs(hidden->win, WA_InnerWidth, &w, WA_InnerHeight, &h, TAG_DONE);
+		SDL_IIntuition->GetWindowAttrs(hidden->win, WA_InnerWidth, &width, WA_InnerHeight, &height, TAG_DONE);
 
 		hidden->IGL->MGLWaitGL(); /* besure all has finished before we start blitting (testing to find lockup cause */
 
-		//_this->FlipHWSurface(_this, video);
+		glGetIntegerv(GL_DRAW_BUFFER, &buf);
 
-        glGetIntegerv(GL_DRAW_BUFFER,&buf);
-        if(buf == GL_BACK)
-        {
-            SDL_IGraphics->BltBitMapRastPort(hidden->m_backBuffer,0,0,hidden->win->RPort,hidden->win->BorderLeft,hidden->win->BorderTop,w,h,0xC0);
-        }
-        else if(buf == GL_FRONT)
-        {
-            SDL_IGraphics->BltBitMapRastPort(hidden->m_frontBuffer,0,0,hidden->win->RPort,hidden->win->BorderLeft,hidden->win->BorderTop,w,h,0xC0);
-        }
+		bitmap = (buf == GL_BACK) ? hidden->backBuffer : hidden->frontBuffer;
 
-        /* copy back into front */
-        SDL_IGraphics->BltBitMapTags(BLITA_Source,	hidden->m_backBuffer,
-								 	 BLITA_SrcType,	BLITT_BITMAP,
- 								 	 BLITA_SrcX,	0,
- 								 	 BLITA_SrcY,	0,
-								 	 BLITA_Dest,	hidden->m_frontBuffer,
-								 	 BLITA_DestType,BLITT_BITMAP,
-								 	 BLITA_DestX,	0,
-								 	 BLITA_DestY,	0,
-								 	 BLITA_Width,	w,
-								 	 BLITA_Height,	h,
-								 	 BLITA_Minterm,	0xC0,
-								 	 TAG_DONE);
+		SDL_IGraphics->BltBitMapRastPort(bitmap, 0, 0, hidden->win->RPort,
+			hidden->win->BorderLeft, hidden->win->BorderTop, width, height, 0xC0);
 
-        temp = hidden->m_frontBuffer;
-        hidden->m_frontBuffer = hidden->m_backBuffer;
-        hidden->m_backBuffer = temp;
+		/* copy back into front */
+		SDL_IGraphics->BltBitMapTags(
+			BLITA_Source,   hidden->backBuffer,
+			BLITA_SrcType,  BLITT_BITMAP,
+			BLITA_SrcX,     0,
+			BLITA_SrcY,     0,
+			BLITA_Dest,     hidden->frontBuffer,
+			BLITA_DestType, BLITT_BITMAP,
+			BLITA_DestX,    0,
+			BLITA_DestY,    0,
+			BLITA_Width,    width,
+			BLITA_Height,   height,
+			BLITA_Minterm,  0xC0,
+			TAG_DONE);
+
+		bitmap = hidden->frontBuffer;
+		hidden->frontBuffer = hidden->backBuffer;
+		hidden->backBuffer = bitmap;
 
 		hidden->IGL->MGLUpdateContextTags(
-							MGLCC_FrontBuffer,hidden->m_frontBuffer,
-							MGLCC_BackBuffer, hidden->m_backBuffer,
-							TAG_DONE);
-
-		//mglSetBitmap(hidden->screenHWData.bm);
+			MGLCC_FrontBuffer,hidden->frontBuffer,
+			MGLCC_BackBuffer, hidden->backBuffer,
+			TAG_DONE);
 	}
 }
 
 extern void *AmiGetGLProc(const char *proc);
 
-void *os4video_GL_GetProcAddress(_THIS, const char *proc) {
+void *
+os4video_GL_GetProcAddress(_THIS, const char *proc) {
 	void *func = NULL;
 
-	if ( !_this->gl_config.driver_loaded )
+	if (!_this->gl_config.driver_loaded)
 	{
 		if (os4video_GL_Init(_this) != 0)
 		{
@@ -323,24 +422,26 @@ void *os4video_GL_GetProcAddress(_THIS, const char *proc) {
 		}
 	}
 
-	func = (void *)AmiGetGLProc(proc);
+	func = AmiGetGLProc(proc);
+
+	if (func)
+	{
+		dprintf("Function '%s' loaded\n", proc);
+	}
+	else
+	{
+		dprintf("Failed to load function '%s'\n", proc);
+	}
+
 	return func;
 }
 
-int os4video_GL_LoadLibrary(_THIS, const char *path) {
-	/* Library is always open */
+int
+os4video_GL_LoadLibrary(_THIS, const char *path) {
+	/* Library is always open (kuin Muumitalo) */
 	_this->gl_config.driver_loaded = 1;
 
 	return 0;
 }
 
-/*
-void glPopClientAttrib(void)
-{
-}
-
-void glPushClientAttrib(void)
-{
-}
-*/
 #endif
