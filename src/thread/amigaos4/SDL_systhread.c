@@ -147,6 +147,39 @@ static struct Node *plistForEach(struct PList *list, plistForEachFn hook, struct
 	return found;
 }
 
+static struct Node *CopyThreadToJoinables(struct ThreadNode *ref, struct JoinNode *join)
+{
+	struct Node *found = 0;
+	struct PList *list = &currentThreads;
+
+	if (list && list->sem)
+	{
+		struct Node *node;
+
+		IExec->ObtainSemaphoreShared(list->sem);
+
+		for (node = list->list.lh_Head;
+			 node->ln_Succ;
+			 node = node->ln_Succ)
+		{
+			if (((struct ThreadNode *)node)->thread == ref->thread)
+			{
+				plistAdd(&currentJoins, (struct Node *)join);
+				found = node;
+				break;
+			}
+		}
+
+		IExec->ReleaseSemaphore(list->sem);
+	}
+	else
+	{
+		dprintf("NULL pointer\n");
+	}
+
+	return found;
+}
+
 static BOOL plistIsListEmpty(struct PList *list)
 {
 	BOOL empty = FALSE;
@@ -275,7 +308,7 @@ static void ExitThread(LONG retVal, LONG finalCode)
 	struct Process    *me       = (struct Process *)IExec->FindTask(NULL);
 	struct ThreadNode *myThread = me->pr_Task.tc_UserData;
 
-	dprintf("Exiting process %p (SDL thread %p) with return value %d\n", me, myThread, retVal);
+	dprintf("Exiting process %p (SDL thread %p) with return value %d\n", me, myThread->thread, retVal);
 
 	/* Remove ourself from the internal list. */
 	plistRemove(&currentThreads, (struct Node *)myThread);
@@ -362,11 +395,6 @@ Uint32 SDL_ThreadID(void)
 	return (Uint32)IExec->FindTask(NULL);
 }
 
-static int threadCmp(struct ThreadNode *node, struct ThreadNode *ref)
-{
-	return (node->thread == ref->thread) ? 1 : 0;
-}
-
 static BOOL KillThreadOrFail(SDL_Thread *thread)
 {
 	BOOL success = FALSE;
@@ -408,7 +436,6 @@ void SDL_SYS_WaitThread(SDL_Thread *thread)
 	struct JoinNode join;
 	struct ThreadNode ref;
 
-	/* Build reference and join nodes */
 	ref.thread = thread;
 	join.sigTask = IExec->FindTask(NULL);
 
@@ -417,13 +444,9 @@ void SDL_SYS_WaitThread(SDL_Thread *thread)
 
 	dprintf("Waiting on thread %p to terminate (current signals %u)\n", thread, sigRec);
 
-	/* Check if the thread is still active */
-	while (plistForEach(&currentThreads, (plistForEachFn)threadCmp, (struct Node *)&ref))
+	while (CopyThreadToJoinables(&ref, &join))
 	{
-		/* Still there, join */
 		dprintf("Thread %p joining...\n", thread);
-
-		plistAdd(&currentJoins, (struct Node *)&join);
 
 		sigRec = IExec->Wait(SIGNAL_CHILD_TERM | SIGBREAKF_CTRL_C);
 
