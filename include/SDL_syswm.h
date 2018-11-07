@@ -197,10 +197,10 @@ struct SDL_SysWMmsg {
 };
 
 /* The AmigaOS4 custom window manager information structure */
-typedef struct SDL_SysWMinfo {
+struct SDL_SysWMinfo {
 	SDL_version version;
 	struct Window *window;	
-} SDL_SysWMinfo;
+};
 
 #else
 
