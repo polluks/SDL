@@ -51,6 +51,8 @@
 # elif defined(SDL_VIDEO_DRIVER_PHOTON)
 #  include <sys/neutrino.h>
 #  include <Ph.h>
+# elif defined(SDL_VIDEO_DRIVER_AMIGAOS4)
+#  include <proto/intuition.h>
 # endif
 #endif
 
@@ -188,7 +190,6 @@ struct SDL_SysWMinfo {
 };
 
 #elif defined(SDL_VIDEO_DRIVER_AMIGAOS4)
-#include <proto/intuition.h>
 
 /* The AmigaOS4 custom event structure */
 struct SDL_SysWMmsg {
