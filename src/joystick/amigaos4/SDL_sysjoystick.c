@@ -266,11 +266,11 @@ int SDL_SYS_JoystickInit(void)
 			};
 
 #if OLDSDK
-			dprintf( "ENUM RETURNED: %ld\n", (int32)SDL_IAIN->AIN_EnumDevices(joystickContext, enumerateJoysticks, &packet) );
+			BOOL result = SDL_IAIN->AIN_EnumDevices(joystickContext, enumerateJoysticks, &packet);
 #else
-			dprintf( "ENUM RETURNED: %ld\n", (int32)SDL_IAIN->EnumDevices(joystickContext, enumerateJoysticks, &packet) );
+			BOOL result = SDL_IAIN->EnumDevices(joystickContext, enumerateJoysticks, &packet);
 #endif
-
+			dprintf("EnumDevices returned: %d\n", result);
 			dprintf("Found %d joysticks\n", joystickCount);
 		}
 	}
