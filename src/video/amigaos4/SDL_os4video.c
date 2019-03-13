@@ -466,6 +466,8 @@ os4video_VideoInit(_THIS, SDL_PixelFormat *vformat)
 	_this->info.blit_fill    = 1;
 	_this->info.blit_hw_A    = 1;
 	_this->info.blit_hw_CC   = 1;
+	_this->info.current_w    = hidden->publicScreen->Width;
+	_this->info.current_h    = hidden->publicScreen->Height;
 
 	if (SDL_IGraphics->GetBoardDataTags(0, GBD_FreeMemory, &freeMem, TAG_DONE) == 1)
 	{
